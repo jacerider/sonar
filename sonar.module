@@ -217,6 +217,7 @@ function sonar_parse_compass($data, $file, $options) {
 
   try {
     $data = $asset->dump();
+    drupal_alter('sonar_css', $data, $file);
     // If no exceptions were thrown, try saving the result to a CSS file.
     if (!file_unmanaged_save_data($data, $css_filepath, FILE_EXISTS_REPLACE)) {
       drupal_set_message(t('The file <code>!file</code> could not be created. Please consult your !watchdog for a detailed error description.', array('!file' => $css_filepath, '!watchdog' => l('log messages', 'admin/reports/dblog'))), 'error');
