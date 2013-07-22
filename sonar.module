@@ -8,6 +8,35 @@ use Assetic\Asset\FileAsset;
 use Assetic\Filter\CompassFilter;
 
 /**
+ * Implements hook_menu
+ *
+ * @author JaceRider
+ */
+function sonar_menu(){
+  $items['admin/config/system/sonar'] = array(
+    'title' => 'Sonar',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('sonar_settings'),
+    'access arguments' => array('administer sonar'),
+    'file' => 'sonar.admin.inc',
+    'description' => t('Configure Sonar settings.')
+  );
+  return $items;
+}
+
+/**
+ * Implements hook_permission().
+ */
+function sonar_permission() {
+  return array(
+    'administer sonar' => array(
+      'title' => t('Administer Sonar'),
+      'description' => t('Perform administration tasks for Sonar.'),
+    ),
+  );
+}
+
+/**
  * Implements hook_css_alter().
  *
  * @param $elements
@@ -25,9 +54,13 @@ use Assetic\Filter\CompassFilter;
  * @return $elements
  * The modified (pre-rendered) $elements parameter.
  */
-function sassy_css_alter(&$css) {
+function sonar_css_alter(&$css) {
+
+  // Do we want to use SONAR?
+  if(!variable_get('sonar_sass')) return;
+
   global $theme_key;
-  $files = sassy_files($css);
+  $files = sonar_files($css);
   uasort($files, 'drupal_sort_weight');
 
   // We can bail out here if there are no Sass files.
@@ -44,7 +77,7 @@ function sassy_css_alter(&$css) {
 
   // The location for the stored files
   $files_directory = variable_get('file_' . file_default_scheme() . '_path', conf_path() . '/files') . '/css/' . $theme_key;
-  $files_directory = variable_get('sassy_compiler_destination') ? theme_get_setting('sassy_compiler_destination') . '/' . $theme_key : $files_directory;
+  $files_directory = variable_get('sonar_compiler_destination') ? theme_get_setting('sonar_compiler_destination') . '/' . $theme_key : $files_directory;
 
   // The file name and path to the file
   $path = $files_directory . '/' . $cid . '.css';
@@ -84,7 +117,7 @@ function sassy_css_alter(&$css) {
     // We recompile this file if the file doesn't exist, if recompile equals true,
     // if cache was cleared or if the file have changed since it was last compiled.
     if ($compile){
-      $data[$key] = sassy_file_add($file['data']);
+      $data[$key] = sonar_file_add($file['data']);
     }
     // Remove this element as it will be combined intoa single element below
     unset($css[$key]);
@@ -97,7 +130,7 @@ function sassy_css_alter(&$css) {
   // Send to compiler
   if(!empty($data)){
     // Compile.
-    sassy_parse($data, $file, $files_directory, $theme_key);
+    sonar_parse($data, $file, $files_directory, $theme_key);
     cache_set($cid, time(), 'cache_page', CACHE_TEMPORARY);
   }
 }
@@ -115,26 +148,26 @@ function sassy_css_alter(&$css) {
  * @return
  *   The transformed CSS as a string.
  */
-function sassy_parse($data, $file, $files_directory, $theme_name) {
+function sonar_parse($data, $file, $files_directory, $theme_name) {
 
-  $images_path = drupal_get_path('theme', $theme_name) . '/assets/images';
-  $fonts_path = drupal_get_path('theme', $theme_name) . '/assets/fonts';
+  $images_path = variable_get('sonar_images_path') ? variable_get('sonar_images_path') : drupal_get_path('theme', $theme_name) . '/assets/images';
+  $fonts_path = variable_get('sonar_fonts_path') ? variable_get('sonar_fonts_path') : drupal_get_path('theme', $theme_name) . '/assets/fonts';
 
   // Sass options
   $options = array(
     'theme' => $theme_name,
-    'style' => 'expanded',
+    'style' => variable_get('sonar_devel') ? 'expanded' : 'compressed',
     'syntax' => 'scss',
     'directory' => $files_directory,
-    'debug_info' => true,
-    'no_line_comments' => false,
-    'compass_path' => 'compass',
+    'debug_info' => variable_get('sonar_devel') ? true : false,
+    'no_line_comments' => variable_get('sonar_devel') ? true : false,
+    'compass_path' => variable_get('sonar_compass_path', 'compass'),
     'http_images_path'=> '/' . $images_path,
     'images_path'=> DRUPAL_ROOT . '/' . $images_path,
     'fonts_path'=> DRUPAL_ROOT . '/' . $fonts_path,
   );
 
-  $data = sassy_parse_compass($data, $file, $options);
+  $data = sonar_parse_compass($data, $file, $options);
 
   return $data;
 }
@@ -151,7 +184,7 @@ function sassy_parse($data, $file, $files_directory, $theme_name) {
  * @return
  *   The transformed CSS as a string.
  */
-function sassy_parse_compass($data, $file, $options) {
+function sonar_parse_compass($data, $file, $options) {
   $directory = $options['directory'] . '/';
   $sass_filepath = $directory . 'tmp.' . basename($file['data']);
   $css_filepath = $directory . str_replace($options['syntax'], 'css', basename($file['data']));
@@ -195,7 +228,7 @@ function sassy_parse_compass($data, $file, $options) {
   catch (Exception $e) {
     // If compilation failed.
     drupal_set_message(t('Could not compile the file <code>!file</code>. Please consult your !watchdog for a detailed error description.', array('!file' => basename($file['data']), '!watchdog' => l('log messages', 'admin/reports/dblog'))), 'error');
-    watchdog('sassy', '<pre>' . $e->getMessage() . '</pre>', NULL, WATCHDOG_DEBUG, NULL);
+    watchdog('sonar', '<pre>' . $e->getMessage() . '</pre>', NULL, WATCHDOG_DEBUG, NULL);
   }
 }
 
@@ -208,7 +241,7 @@ function sassy_parse_compass($data, $file, $options) {
  * @return
  *   A string that represents the processed contents of the stylesheet.
  */
-function sassy_file_add($file) {
+function sonar_file_add($file) {
   $data = '@import "' .DRUPAL_ROOT . '/' .$file.'";'."\n";
   return $data;
 }
@@ -222,7 +255,7 @@ function sassy_file_add($file) {
  * @return
  *   The extracted files as an array.
  */
-function sassy_files($items) {
+function sonar_files($items) {
   $files = &drupal_static(__FUNCTION__);
   if (!isset($files)){
     $files = array();
