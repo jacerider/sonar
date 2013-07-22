@@ -1,0 +1,240 @@
+<?php
+
+// Composer autoload
+require_once dirname(__FILE__) . '/assetic/vendor/autoload.php';
+
+// Manage filters
+use Assetic\Asset\FileAsset;
+use Assetic\Filter\CompassFilter;
+
+/**
+ * Implements hook_css_alter().
+ *
+ * @param $elements
+ * A render array containing:
+ * '#items': The CSS items as returned by drupal_add_css() and altered by
+ * drupal_get_css().
+ * '#group_callback': A function to call to group #items to enable the use of
+ * fewer tags by aggregating files and/or using multiple @import statements
+ * within a single tag.
+ * '#aggregate_callback': A function to call to aggregate the items within the
+ * groups arranged by the #group_callback function.
+ * @param $clean
+ * Force a rebuild if TRUE
+ *
+ * @return $elements
+ * The modified (pre-rendered) $elements parameter.
+ */
+function sassy_css_alter(&$css) {
+  global $theme_key;
+  $files = sassy_files($css);
+  uasort($files, 'drupal_sort_weight');
+
+  // We can bail out here if there are no Sass files.
+  if (empty($files)) {
+    return $css;
+  }
+
+  // Container for data that will be saved to temp file
+  $data = array();
+
+  // Create unique CID for these files
+  $cid = implode('', array_keys($files));
+  $cid = $theme_key.'-'.substr(drupal_hash_base64($cid), 0, 25);
+
+  // The location for the stored files
+  $files_directory = variable_get('file_' . file_default_scheme() . '_path', conf_path() . '/files') . '/css/' . $theme_key;
+  $files_directory = variable_get('sassy_compiler_destination') ? theme_get_setting('sassy_compiler_destination') . '/' . $theme_key : $files_directory;
+
+  // The file name and path to the file
+  $path = $files_directory . '/' . $cid . '.css';
+
+  // Get cached data
+  $cached = cache_get($cid, 'cache_page');
+
+  // We now need to check to see if we need to generate this file
+  //
+  // - Does the file exist?
+  // - Does a cache exist?
+  $compile = !file_exists($path) || empty($cached->data) ? TRUE : FALSE;
+
+  // Lets remove all files that don't exist
+  foreach ($files as $key => $file)
+  {
+    if (!file_exists($css[$key]['data'])) {
+      unset($css[$key]);
+    }
+  }
+
+  // If create is still set to false, lets check to see if any of the files
+  // have been updated since our last compile
+  if(!$compile)
+  {
+    foreach ($files as $key => $file) {
+      if(filemtime($path) < filemtime($file['data'])){
+        $compile = TRUE;
+      }
+    }
+  }
+
+  // Loop through each file again and remove from $elements array
+  // and read if we are compiling
+  foreach ($files as $key => $file)
+  {
+    // We recompile this file if the file doesn't exist, if recompile equals true,
+    // if cache was cleared or if the file have changed since it was last compiled.
+    if ($compile){
+      $data[$key] = sassy_file_add($file['data']);
+    }
+    // Remove this element as it will be combined intoa single element below
+    unset($css[$key]);
+  }
+
+  $files = drupal_add_css($path);
+  $file = $files[$path];
+  $css[$path] = $file;
+
+  // Send to compiler
+  if(!empty($data)){
+    // Compile.
+    sassy_parse($data, $file, $files_directory, $theme_key);
+    cache_set($cid, time(), 'cache_page', CACHE_TEMPORARY);
+  }
+}
+
+/**
+ * Parse a SCSS string and transform it into CSS.
+ *
+ * @param $data
+ *   A SCSS string.
+ * @param $file
+ *   The SASS or SCSS file that $data belongs to described by an array.
+ * @param $theme_name
+ *   String specifying the theme name.
+ *
+ * @return
+ *   The transformed CSS as a string.
+ */
+function sassy_parse($data, $file, $files_directory, $theme_name) {
+
+  $images_path = drupal_get_path('theme', $theme_name) . '/assets/images';
+  $fonts_path = drupal_get_path('theme', $theme_name) . '/assets/fonts';
+
+  // Sass options
+  $options = array(
+    'theme' => $theme_name,
+    'style' => 'expanded',
+    'syntax' => 'scss',
+    'directory' => $files_directory,
+    'debug_info' => true,
+    'no_line_comments' => false,
+    'compass_path' => 'compass',
+    'http_images_path'=> '/' . $images_path,
+    'images_path'=> DRUPAL_ROOT . '/' . $images_path,
+    'fonts_path'=> DRUPAL_ROOT . '/' . $fonts_path,
+  );
+
+  $data = sassy_parse_compass($data, $file, $options);
+
+  return $data;
+}
+
+/**
+ * Parse a SCSS string and transform it into CSS using Compass compiler.
+ *
+ * @param $data
+ *   A SCSS string.
+ * @param $file
+ *   The SASS or SCSS file that $data belongs to described by an array.
+ * @param $options
+ *   Array containg all information needed by the compiler.
+ * @return
+ *   The transformed CSS as a string.
+ */
+function sassy_parse_compass($data, $file, $options) {
+  $directory = $options['directory'] . '/';
+  $sass_filepath = $directory . 'tmp.' . basename($file['data']);
+  $css_filepath = $directory . str_replace($options['syntax'], 'css', basename($file['data']));
+  $syntax = $options['syntax'] == 'scss' ? true : false;
+
+  // Put $data in a file that Compass can compile.
+  if (!file_prepare_directory($directory, FILE_CREATE_DIRECTORY)) {
+    drupal_set_message(t('The directory !directory could not be created or is not writable. Please consult your !watchdog for a detailed error description.', array('!directory' => $directory, '!watchdog' => l('log messages', 'admin/reports/dblog'))), 'error');
+  };
+  if (!file_unmanaged_save_data($data, $sass_filepath, FILE_EXISTS_REPLACE)) {
+    drupal_set_message(t('The file <code>!file</code> could not be created. Please consult your !watchdog for a detailed error description.', array('!file' => $sass_filepath, '!watchdog' => l('log messages', 'admin/reports/dblog'))), 'error');
+  };
+  // Let assetic compile it
+  $asset = new FileAsset($sass_filepath,
+    array(
+      $compass = new CompassFilter($options['compass_path']),
+    )
+  );
+
+  // Compass settings
+  $compass->setScss($syntax);
+  $compass->setDebugInfo($options['debug_info']);
+  $compass->setStyle($options['style']);
+  $compass->setNoLineComments($options['no_line_comments']);
+  $compass->setHttpPath('/');
+  $compass->setHttpImagesPath($options['http_images_path']);
+  $compass->setImagesDir($options['images_path']);
+  $compass->setGeneratedImagesPath(DRUPAL_ROOT . '/' . $options['directory'] . '/images/');
+  $compass->setHttpGeneratedImagesPath('/' . $options['directory'] . '/images/');
+
+  try {
+    $data = $asset->dump();
+    // If no exceptions were thrown, try saving the result to a CSS file.
+    if (!file_unmanaged_save_data($data, $css_filepath, FILE_EXISTS_REPLACE)) {
+      drupal_set_message(t('The file <code>!file</code> could not be created. Please consult your !watchdog for a detailed error description.', array('!file' => $css_filepath, '!watchdog' => l('log messages', 'admin/reports/dblog'))), 'error');
+    };
+    file_unmanaged_delete($sass_filepath);
+
+    return $data;
+  }
+  catch (Exception $e) {
+    // If compilation failed.
+    drupal_set_message(t('Could not compile the file <code>!file</code>. Please consult your !watchdog for a detailed error description.', array('!file' => basename($file['data']), '!watchdog' => l('log messages', 'admin/reports/dblog'))), 'error');
+    watchdog('sassy', '<pre>' . $e->getMessage() . '</pre>', NULL, WATCHDOG_DEBUG, NULL);
+  }
+}
+
+/**
+ * Loads a stylesheet and writes it as an @import so that FireSASS can be used.
+ *
+ * @param $file
+ *   A filepath or an array representing a stylesheet.
+ *
+ * @return
+ *   A string that represents the processed contents of the stylesheet.
+ */
+function sassy_file_add($file) {
+  $data = '@import "' .DRUPAL_ROOT . '/' .$file.'";'."\n";
+  return $data;
+}
+
+/**
+ * Picks all Sass files from an array of stylesheets.
+ *
+ * @param $items
+ *   An array of stylesheets.
+ *
+ * @return
+ *   The extracted files as an array.
+ */
+function sassy_files($items) {
+  $files = &drupal_static(__FUNCTION__);
+  if (!isset($files)){
+    $files = array();
+    foreach ($items as $key => $file) {
+      if ($file['type'] == 'file') {
+        $extension = drupal_substr($file['data'], -5);
+        if (in_array($extension, array('.scss', '.sass'))) {
+          $file['syntax'] = $extension == '.scss' ? 'scss' : 'sass';
+          $files[$key] = $file;
+        }
+      }
+    }
+  }
+  return $files;
+}
