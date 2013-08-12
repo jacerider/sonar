@@ -77,7 +77,7 @@ function sonar_css_alter(&$css) {
 
   // The location for the stored files
   $files_directory = variable_get('file_' . file_default_scheme() . '_path', conf_path() . '/files') . '/css/' . $theme_key;
-  $files_directory = variable_get('sonar_compiler_destination') ? theme_get_setting('sonar_compiler_destination') . '/' . $theme_key : $files_directory;
+  $files_directory = variable_get('sonar_compiler_destination') ? variable_get('sonar_compiler_destination') . '/' . $theme_key : $files_directory;
 
   // The file name and path to the file
   $path = $files_directory . '/' . $cid . '.css';
@@ -109,6 +109,9 @@ function sonar_css_alter(&$css) {
       }
     }
   }
+
+  // Pantheon help!
+  if (isset($_SERVER['PANTHEON_ENVIRONMENT'])) $compile = FALSE;
 
   // Loop through each file again and remove from $elements array
   // and read if we are compiling
