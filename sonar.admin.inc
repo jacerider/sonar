@@ -19,10 +19,22 @@ function sonar_settings($form, $form_state) {
     '#element_validate' => array('sonar_sass_validate'),
     '#default_value' => variable_get('sonar_sass'),
   );
+  $form['sonar_sass']['sonar_remote'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Use remote compiling'),
+    '#description' => t('Sass integration - uncheck if you are already using a different sass compiler.'),
+    '#default_value' => isset($_SERVER['PANTHEON_ENVIRONMENT']) ? 1 : variable_get('sonar_remote'),
+    '#disabled' => isset($_SERVER['PANTHEON_ENVIRONMENT']),
+  );
 
   $form['sonar_sass']['sonar_compass_path'] = array(
     '#type' => 'fieldset',
     '#title' => t('Compass Path'),
+    '#states' => array(
+      'visible' => array(   // action to take.
+        ':input[name="sonar_remote"]' => array('checked' => FALSE),
+      ),
+    ),
   );
   $form['sonar_sass']['sonar_compass_path']['description'] = array(
     '#markup' => '<div class="description">' . 'Set the path to where your compass compiler is installed. To find out what this is, you can open up your console and type "which compass".' . '</div>',

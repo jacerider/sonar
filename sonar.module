@@ -110,9 +110,6 @@ function sonar_css_alter(&$css) {
     }
   }
 
-  // Pantheon help!
-  if (isset($_SERVER['PANTHEON_ENVIRONMENT'])) $compile = FALSE;
-
   // Loop through each file again and remove from $elements array
   // and read if we are compiling
   foreach ($files as $key => $file)
@@ -120,7 +117,13 @@ function sonar_css_alter(&$css) {
     // We recompile this file if the file doesn't exist, if recompile equals true,
     // if cache was cleared or if the file have changed since it was last compiled.
     if ($compile){
-      $data[$key] = sonar_file_add($file['data']);
+      if(sonary_use_remote()){
+        // Aggregate all files into a single file.
+        $data[$key] = sonar_file_add_remote($file['data']);
+      }else{
+        // Use @import to pull in all sub-stylesheets.
+        $data[$key] = sonar_file_add($file['data']);
+      }
     }
     // Remove this element as it will be combined intoa single element below
     unset($css[$key]);
@@ -136,6 +139,13 @@ function sonar_css_alter(&$css) {
     sonar_parse($data, $file, $files_directory, $theme_key);
     cache_set($cid, time(), 'cache_page', CACHE_TEMPORARY);
   }
+}
+
+/**
+ * Should Sonar use a remote compiler or a local compiler.
+ */
+function sonary_use_remote(){
+  return (variable_get('sonar_remote') || isset($_SERVER['PANTHEON_ENVIRONMENT'])) ? TRUE : FALSE;
 }
 
 /**
@@ -170,7 +180,170 @@ function sonar_parse($data, $file, $files_directory, $theme_name) {
     'fonts_path'=> DRUPAL_ROOT . '/' . $fonts_path,
   );
 
-  $data = sonar_parse_compass($data, $file, $options);
+  $function = 'sonar_parse_compass';
+
+  // Check if we need to use remote parsing.
+  if(sonary_use_remote()) $function = 'sonar_parse_remote';
+
+  $data = $function($data, $file, $options);
+
+  return $data;
+}
+
+/**
+ * Prepare destination directory.
+ */
+function sonar_prepare_directory($directory){
+  if (!file_prepare_directory($directory, FILE_CREATE_DIRECTORY)) {
+    drupal_set_message(t('The directory !directory could not be created or is not writable. Please consult your !watchdog for a detailed error description.', array('!directory' => $directory, '!watchdog' => l('log messages', 'admin/reports/dblog'))), 'error');
+  };
+}
+
+/**
+ * Create temporary SASS file.
+ */
+function sonar_create_temp($data, $directory){
+  if (!file_unmanaged_save_data($data, $directory, FILE_EXISTS_REPLACE)) {
+    drupal_set_message(t('The file <code>!file</code> could not be created. Please consult your !watchdog for a detailed error description.', array('!file' => $directory, '!watchdog' => l('log messages', 'admin/reports/dblog'))), 'error');
+  };
+}
+
+/**
+ * Parse a SCSS string and transform it into CSS using Send the Style.
+ * @return [type] [description]
+ */
+function sonar_parse_remote($data, $file, $options){
+  // If remote service is down we will only check if it is up every so often.
+  if ($cache = cache_get('sonar_remote_fail')) {
+    if($cache->expire > time()){
+      dsm('Hitting cache');
+      return $data;
+    }
+    cache_clear_all('sonar_remote_fail', 'cache');
+  }
+
+
+  $directory = $options['directory'] . '/';
+  $sass_filepath = $directory . 'tmp.' . basename($file['data']);
+  $css_filepath = $directory . str_replace($options['syntax'], 'css', basename($file['data']));
+
+  // Create destination directory
+  sonar_prepare_directory($directory);
+
+  // Create temp file
+  sonar_create_temp($data, $sass_filepath);
+
+  $error = TRUE;
+
+  try {
+    $scheme =  'http';
+    $host = 'send-the-style.herokuapp.com';
+    $user = 'NmM0M2YzYmJhYTBjMTI3YjczMzM4ZTZjZGM5NzUzNTA';
+    $pass = '';
+    $url = $scheme . '://' . $user . '@' . $host . '/api/compile';
+    $data = array(
+      'file' => url($sass_filepath, array('absolute'=>TRUE)),
+      'http_images_path' => $options['http_images_path'],
+    );
+    $full_url = url($url, array('query' => $data));
+    $options = array(
+      'method' => 'POST',
+      'headers' => array(
+        'Content-Type' => 'text/html; charset=UTF-8',
+      ),
+      'timeout' => 8,
+    );
+
+    // $process = curl_init($full_url);
+    // //curl_setopt($process, CURLOPT_HTTPHEADER, array('Content-Type: application/html', $additionalHeaders));
+    // curl_setopt($process, CURLOPT_HEADER, 1);
+    // curl_setopt($process, CURLOPT_USERPWD, $user . ":" . $pass);
+    // curl_setopt($process, CURLOPT_TIMEOUT, 8);
+    // //curl_setopt($process, CURLOPT_POST, 1);
+    // //curl_setopt($process, CURLOPT_POSTFIELDS, $payloadName);
+    // curl_setopt($process, CURLOPT_RETURNTRANSFER, TRUE);
+    // $return = curl_exec($process);
+    // dsm($return);
+    // curl_close($process);
+
+    // Get cURL resource
+    $curl = curl_init();
+    // Set some options - we are passing in a useragent too here
+    curl_setopt_array($curl, array(
+        CURLOPT_RETURNTRANSFER => 1,
+        CURLOPT_URL => $full_url,
+        CURLOPT_USERPWD => $user . ":" . $pass,
+        CURLOPT_USERAGENT => 'Sonar'
+    ));
+    // Send the request & save response to $resp
+    $response = curl_exec($curl);
+    $code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+    // Close request to clear up some resources
+    curl_close($curl);
+
+    switch($code){
+
+      case -1:
+        watchdog('sonar', 'Error - Request to Send-the-Style timed out.', NULL, WATCHDOG_DEBUG, NULL);
+        cache_set('sonar_remote_fail', 1, 'cache', strtotime('+1 minute'));
+        break;
+
+      case 400:
+        watchdog('sonar', 'Bad Request - Often missing a required parameter.', NULL, WATCHDOG_DEBUG, NULL);
+        break;
+
+      case 401:
+        watchdog('sonar', 'Unauthorized - No valid API key provided.', NULL, WATCHDOG_DEBUG, NULL);
+        break;
+
+      case 402:
+        watchdog('sonar', 'Request Failed - Parameters were valid but request failed.', NULL, WATCHDOG_DEBUG, NULL);
+        break;
+
+      case 404:
+        watchdog('sonar', 'Not Found - The requested item doesn\'t exist.', NULL, WATCHDOG_DEBUG, NULL);
+        break;
+
+      case 200:
+        if(!empty($response)){
+          $json = json_decode($response);
+          // Compiled CSS data was returned.
+          if(!empty($json->css)){
+            $error = FALSE;
+            $data = $json->css;
+            file_unmanaged_delete($sass_filepath);
+            drupal_alter('sonar_css', $data, $file);
+            file_unmanaged_save_data($data, $css_filepath, FILE_EXISTS_REPLACE);
+          }
+          // No CSS data was returned. We have an error.
+          else{
+            if(!empty($json->message)){
+              watchdog('sonar', '<pre>' . $json->message . '</pre>', NULL, WATCHDOG_DEBUG, NULL);
+            }
+            else{
+              watchdog('sonar', 'An undefined error occurred.', NULL, WATCHDOG_DEBUG, NULL);
+            }
+          }
+        }
+        else{
+          watchdog('sonar', 'No data was returned from the remote host.', NULL, WATCHDOG_DEBUG, NULL);
+        }
+        break;
+
+      default:
+        watchdog('sonar', 'Server errors - something went wrong on Send-the-Style\'s end.', NULL, WATCHDOG_DEBUG, NULL);
+        break;
+
+    }
+  }
+  catch (Exception $e) {
+    // If compilation failed.
+    watchdog('sonar', '<pre>' . $e->getMessage() . '</pre>', NULL, WATCHDOG_DEBUG, NULL);
+  }
+
+  if($error){
+    drupal_set_message(t('Could not remote compile the file <code>!file</code>. Please consult your !watchdog for a detailed error description.', array('!file' => basename($file['data']), '!watchdog' => l('log messages', 'admin/reports/dblog'))), 'error');
+  }
 
   return $data;
 }
@@ -193,13 +366,12 @@ function sonar_parse_compass($data, $file, $options) {
   $css_filepath = $directory . str_replace($options['syntax'], 'css', basename($file['data']));
   $syntax = $options['syntax'] == 'scss' ? true : false;
 
-  // Put $data in a file that Compass can compile.
-  if (!file_prepare_directory($directory, FILE_CREATE_DIRECTORY)) {
-    drupal_set_message(t('The directory !directory could not be created or is not writable. Please consult your !watchdog for a detailed error description.', array('!directory' => $directory, '!watchdog' => l('log messages', 'admin/reports/dblog'))), 'error');
-  };
-  if (!file_unmanaged_save_data($data, $sass_filepath, FILE_EXISTS_REPLACE)) {
-    drupal_set_message(t('The file <code>!file</code> could not be created. Please consult your !watchdog for a detailed error description.', array('!file' => $sass_filepath, '!watchdog' => l('log messages', 'admin/reports/dblog'))), 'error');
-  };
+  // Create destination directory
+  sonar_prepare_directory($directory);
+
+  // Create temp file
+  sonar_create_temp($data, $sass_filepath);
+
   // Let assetic compile it
   $asset = new FileAsset($sass_filepath,
     array(
@@ -247,6 +419,37 @@ function sonar_parse_compass($data, $file, $options) {
  */
 function sonar_file_add($file) {
   $data = '@import "' .DRUPAL_ROOT . '/' .$file.'";'."\n";
+  return $data;
+}
+
+/**
+ * Loads a stylesheet and writes it as an @import so that FireSASS can be used.
+ *
+ * @param $file
+ *   A filepath or an array representing a stylesheet.
+ *
+ * @return
+ *   A string that represents the processed contents of the stylesheet.
+ */
+function sonar_file_add_remote($file) {
+  $data = file_get_contents($file);
+
+  preg_match_all('/(?<!\/\/)(?<!\t)(?<! )@import "(.*)";/', $data, $results);
+  if(!empty($results[1])){
+    $info = pathinfo($file);
+    foreach($results[1] as $name){
+      if(strpos($name, 'compass') !== false) continue;
+      $filepath = $info['dirname'] . '/_' . $name .'.scss';
+      $pattern = '/(?<!\/\/)(?<!\t)(?<! )@import "('. str_replace('/', '\/', $name) .')";/';
+      $filedata = '// Remove include of '.$name;
+      if(file_exists($filepath)){
+        $filedata = file_get_contents($filepath);
+      }
+
+      $data = preg_replace($pattern, $filedata, $data);
+    }
+  }
+
   return $data;
 }
 
