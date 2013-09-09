@@ -23,7 +23,8 @@ function sonar_settings($form, $form_state) {
     '#type' => 'checkbox',
     '#title' => t('Use remote compiling'),
     '#description' => t('Sass integration - uncheck if you are already using a different sass compiler.'),
-    '#default_value' => variable_get('sonar_remote'),
+    '#default_value' => isset($_SERVER['PANTHEON_ENVIRONMENT']) ? 1 : variable_get('sonar_remote'),
+    '#disabled' => isset($_SERVER['PANTHEON_ENVIRONMENT']),
   );
 
   $form['sonar_sass']['sonar_compass_path'] = array(
