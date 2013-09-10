@@ -2,7 +2,6 @@
 
 // Composer autoload
 require_once dirname(__FILE__) . '/assetic/vendor/autoload.php';
-
 // Manage filters
 use Assetic\Asset\FileAsset;
 use Assetic\Filter\CompassFilter;
@@ -145,7 +144,7 @@ function sonar_css_alter(&$css) {
  * Should Sonar use a remote compiler or a local compiler.
  */
 function sonary_use_remote(){
-  return (variable_get('sonar_remote') || isset($_SERVER['PANTHEON_ENVIRONMENT'])) ? TRUE : FALSE;
+  return (variable_get('sonar_remote') || isset($_SERVER['PANTHEON_ENVIRONMENT']) || version_compare(phpversion(), '5.3', '<')) ? TRUE : FALSE;
 }
 
 /**
