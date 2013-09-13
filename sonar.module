@@ -237,7 +237,7 @@ function sonar_parse_remote($data, $file, $options){
   try {
     $scheme =  'http';
     $host = 'send-the-style.herokuapp.com';
-    $user = 'NmM0M2YzYmJhYTBjMTI3YjczMzM4ZTZjZGM5NzUzNTA';
+    $user = 'PhxkFh9u7btRL823ZgrV9FdpNPdy7A7RNmM0M2Yz';
     $pass = '';
     $url = $scheme . '://' . $user . '@' . $host . '/api/compile';
     $data = array(
