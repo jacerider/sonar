@@ -35,6 +35,11 @@ function sonar_permission() {
   );
 }
 
+function sonar_is_live(){
+  if(!empty($_SERVER['PANTHEON_ENVIRONMENT']) && $_SERVER['PANTHEON_ENVIRONMENT'] == 'live') return TRUE;
+  return FALSE;
+}
+
 /**
  * Implements hook_css_alter().
  *
@@ -91,16 +96,19 @@ function sonar_css_alter(&$css) {
   $compile = !file_exists($path) || empty($cached->data) ? TRUE : FALSE;
 
   // Lets remove all files that don't exist
-  foreach ($files as $key => $file)
-  {
-    if (!file_exists($css[$key]['data'])) {
-      unset($css[$key]);
+  if (!sonar_is_live()) {
+    foreach ($files as $key => $file)
+    {
+      if (!file_exists($css[$key]['data'])) {
+        unset($css[$key]);
+        drupal_set_message(t('Sonar is trying to use @file and it is not able to find it.', array('@file'=>$key)));
+      }
     }
   }
 
   // If create is still set to false, lets check to see if any of the files
   // have been updated since our last compile
-  if(!$compile)
+  if(!$compile && !sonar_is_live())
   {
     foreach ($files as $key => $file) {
       if(filemtime($path) < filemtime($file['data'])){
@@ -116,7 +124,7 @@ function sonar_css_alter(&$css) {
     // We recompile this file if the file doesn't exist, if recompile equals true,
     // if cache was cleared or if the file have changed since it was last compiled.
     if ($compile){
-      if(sonary_use_remote()){
+      if(sonar_use_remote()){
         // Aggregate all files into a single file.
         $data[$key] = sonar_file_add_remote($file['data']);
       }else{
@@ -124,7 +132,7 @@ function sonar_css_alter(&$css) {
         $data[$key] = sonar_file_add($file['data']);
       }
     }
-    // Remove this element as it will be combined intoa single element below
+    // Remove this element as it will be combined into a single element below.
     unset($css[$key]);
   }
 
@@ -143,7 +151,7 @@ function sonar_css_alter(&$css) {
 /**
  * Should Sonar use a remote compiler or a local compiler.
  */
-function sonary_use_remote(){
+function sonar_use_remote(){
   return (variable_get('sonar_remote') || isset($_SERVER['PANTHEON_ENVIRONMENT']) || version_compare(phpversion(), '5.3', '<')) ? TRUE : FALSE;
 }
 
@@ -182,7 +190,7 @@ function sonar_parse($data, $file, $files_directory, $theme_name) {
   $function = 'sonar_parse_compass';
 
   // Check if we need to use remote parsing.
-  if(sonary_use_remote()) $function = 'sonar_parse_remote';
+  if(sonar_use_remote()) $function = 'sonar_parse_remote';
 
   $data = $function($data, $file, $options);
 
@@ -215,7 +223,6 @@ function sonar_parse_remote($data, $file, $options){
   // If remote service is down we will only check if it is up every so often.
   if ($cache = cache_get('sonar_remote_fail')) {
     if($cache->expire > time()){
-      dsm('Hitting cache');
       return $data;
     }
     cache_clear_all('sonar_remote_fail', 'cache');
@@ -235,35 +242,22 @@ function sonar_parse_remote($data, $file, $options){
   $error = TRUE;
 
   try {
-    $scheme =  'http';
+    $scheme =  'https';
     $host = 'send-the-style.herokuapp.com';
     $user = 'PhxkFh9u7btRL823ZgrV9FdpNPdy7A7RNmM0M2Yz';
     $pass = '';
-    $url = $scheme . '://' . $user . '@' . $host . '/api/compile';
+    $url = $scheme . '://' . $host . '/api/compile';
     $data = array(
       'file' => url($sass_filepath, array('absolute'=>TRUE)),
       'http_images_path' => $options['http_images_path'],
     );
-    $full_url = url($url, array('query' => $data));
-    $options = array(
-      'method' => 'POST',
-      'headers' => array(
-        'Content-Type' => 'text/html; charset=UTF-8',
-      ),
-      'timeout' => 8,
-    );
 
-    // $process = curl_init($full_url);
-    // //curl_setopt($process, CURLOPT_HTTPHEADER, array('Content-Type: application/html', $additionalHeaders));
-    // curl_setopt($process, CURLOPT_HEADER, 1);
-    // curl_setopt($process, CURLOPT_USERPWD, $user . ":" . $pass);
-    // curl_setopt($process, CURLOPT_TIMEOUT, 8);
-    // //curl_setopt($process, CURLOPT_POST, 1);
-    // //curl_setopt($process, CURLOPT_POSTFIELDS, $payloadName);
-    // curl_setopt($process, CURLOPT_RETURNTRANSFER, TRUE);
-    // $return = curl_exec($process);
-    // dsm($return);
-    // curl_close($process);
+    if ($_SERVER['PANTHEON_ENVIRONMENT'] != 'live') {
+      if(variable_get('sonar_auth_user')) $data['auth_user'] = variable_get('sonar_auth_user');
+      if(variable_get('sonar_auth_pass')) $data['auth_pass'] = variable_get('sonar_auth_pass');
+    }
+
+    $full_url = url($url, array('query' => $data));
 
     // Get cURL resource
     $curl = curl_init();
@@ -276,6 +270,7 @@ function sonar_parse_remote($data, $file, $options){
     ));
     // Send the request & save response to $resp
     $response = curl_exec($curl);
+    $json = json_decode($response);
     $code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
     // Close request to clear up some resources
     curl_close($curl);
@@ -288,7 +283,7 @@ function sonar_parse_remote($data, $file, $options){
         break;
 
       case 400:
-        watchdog('sonar', 'Bad Request - Often missing a required parameter.', NULL, WATCHDOG_DEBUG, NULL);
+        watchdog('sonar', 'Bad Request - '.$json->message.'.', NULL, WATCHDOG_DEBUG, NULL);
         break;
 
       case 401:
@@ -304,8 +299,7 @@ function sonar_parse_remote($data, $file, $options){
         break;
 
       case 200:
-        if(!empty($response)){
-          $json = json_decode($response);
+        if(!empty($json)){
           // Compiled CSS data was returned.
           if(!empty($json->css)){
             $error = FALSE;
@@ -340,7 +334,8 @@ function sonar_parse_remote($data, $file, $options){
     watchdog('sonar', '<pre>' . $e->getMessage() . '</pre>', NULL, WATCHDOG_DEBUG, NULL);
   }
 
-  if($error){
+  global $user;
+  if($error && $user->uid == 1){
     drupal_set_message(t('Could not remote compile the file <code>!file</code>. Please consult your !watchdog for a detailed error description.', array('!file' => basename($file['data']), '!watchdog' => l('log messages', 'admin/reports/dblog'))), 'error');
   }
 

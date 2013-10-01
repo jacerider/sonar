@@ -72,6 +72,27 @@ function sonar_settings($form, $form_state) {
     '#default_value' => variable_get('sonar_compiler_destination'),
   );
 
+  $form['sonar_sass']['sonar_auth'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Authentification'),
+    '#description' => t('If you are using remote compiling and your server requires authentification you can use the below fields to enter your authentification credentials.'),
+    '#states' => array(
+      'visible' => array(   // action to take.
+        ':input[name="sonar_remote"]' => array('checked' => TRUE),
+      ),
+    ),
+  );
+  $form['sonar_sass']['sonar_auth']['sonar_auth_user'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Username'),
+    '#default_value' => variable_get('sonar_auth_user'),
+  );
+  $form['sonar_sass']['sonar_auth']['sonar_auth_pass'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Password'),
+    '#default_value' => variable_get('sonar_auth_pass'),
+  );
+
   $form['sonar_sass']['sonar_url_helpers'] = array(
     '#type' => 'fieldset',
     '#title' => t('Compass URL Helpers'),
@@ -98,11 +119,11 @@ function sonar_settings($form, $form_state) {
     '#default_value' => variable_get('sonar_fonts_path'),
   );
 
-  $form['sonar_sass']['sonar_debbug'] = array(
+  $form['sonar_sass']['sonar_debug'] = array(
     '#type' => 'fieldset',
     '#title' => t('Debugging'),
   );
-  $form['sonar_sass']['sonar_debbug']['sonar_devel'] = array(
+  $form['sonar_sass']['sonar_debug']['sonar_devel'] = array(
     '#type' => 'checkbox',
     '#title' => t('Development mode - unminified output and FireSass support.'),
     '#description' => t('Sass Development - Output unminified sass for better readability and add !firesass support. <strong>Note:</strong> css output is way bigger, use only while in development.', array('!firesass' => '<a target="blank" href="https://addons.mozilla.org/en-US/firefox/addon/firesass-for-firebug/">FireSass</a>')),
