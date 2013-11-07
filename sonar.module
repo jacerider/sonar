@@ -1,16 +1,5 @@
 <?php
 
-// Composer autoload
-require_once dirname(__FILE__) . '/assetic/vendor/autoload.php';
-// Manage filters
-use Assetic\Asset\FileAsset;
-use Assetic\Filter\CompassFilter;
-
-/**
- * Implements hook_menu
- *
- * @author JaceRider
- */
 function sonar_menu(){
   $items['admin/config/system/sonar'] = array(
     'title' => 'Sonar',
@@ -33,11 +22,6 @@ function sonar_permission() {
       'description' => t('Perform administration tasks for Sonar.'),
     ),
   );
-}
-
-function sonar_is_live(){
-  if(!empty($_SERVER['PANTHEON_ENVIRONMENT']) && $_SERVER['PANTHEON_ENVIRONMENT'] == 'live') return TRUE;
-  return FALSE;
 }
 
 /**
@@ -96,19 +80,16 @@ function sonar_css_alter(&$css) {
   $compile = !file_exists($path) || empty($cached->data) ? TRUE : FALSE;
 
   // Lets remove all files that don't exist
-  if (!sonar_is_live()) {
-    foreach ($files as $key => $file)
-    {
-      if (!file_exists($css[$key]['data'])) {
-        unset($css[$key]);
-        drupal_set_message(t('Sonar is trying to use @file and it is not able to find it.', array('@file'=>$key)));
-      }
+  foreach ($files as $key => $file)
+  {
+    if (!file_exists($css[$key]['data'])) {
+      unset($css[$key]);
     }
   }
 
   // If create is still set to false, lets check to see if any of the files
   // have been updated since our last compile
-  if(!$compile && !sonar_is_live())
+  if(!$compile)
   {
     foreach ($files as $key => $file) {
       if(filemtime($path) < filemtime($file['data'])){
@@ -124,7 +105,7 @@ function sonar_css_alter(&$css) {
     // We recompile this file if the file doesn't exist, if recompile equals true,
     // if cache was cleared or if the file have changed since it was last compiled.
     if ($compile){
-      if(sonar_use_remote()){
+      if(sonary_use_remote()){
         // Aggregate all files into a single file.
         $data[$key] = sonar_file_add_remote($file['data']);
       }else{
@@ -132,7 +113,7 @@ function sonar_css_alter(&$css) {
         $data[$key] = sonar_file_add($file['data']);
       }
     }
-    // Remove this element as it will be combined into a single element below.
+    // Remove this element as it will be combined intoa single element below
     unset($css[$key]);
   }
 
@@ -151,7 +132,7 @@ function sonar_css_alter(&$css) {
 /**
  * Should Sonar use a remote compiler or a local compiler.
  */
-function sonar_use_remote(){
+function sonary_use_remote(){
   return (variable_get('sonar_remote') || isset($_SERVER['PANTHEON_ENVIRONMENT']) || version_compare(phpversion(), '5.3', '<')) ? TRUE : FALSE;
 }
 
@@ -190,7 +171,7 @@ function sonar_parse($data, $file, $files_directory, $theme_name) {
   $function = 'sonar_parse_compass';
 
   // Check if we need to use remote parsing.
-  if(sonar_use_remote()) $function = 'sonar_parse_remote';
+  if(sonary_use_remote()) $function = 'sonar_parse_remote';
 
   $data = $function($data, $file, $options);
 
@@ -223,6 +204,7 @@ function sonar_parse_remote($data, $file, $options){
   // If remote service is down we will only check if it is up every so often.
   if ($cache = cache_get('sonar_remote_fail')) {
     if($cache->expire > time()){
+      dsm('Hitting cache');
       return $data;
     }
     cache_clear_all('sonar_remote_fail', 'cache');
@@ -242,22 +224,35 @@ function sonar_parse_remote($data, $file, $options){
   $error = TRUE;
 
   try {
-    $scheme =  'https';
+    $scheme =  'http';
     $host = 'send-the-style.herokuapp.com';
-    $user = 'PhxkFh9u7btRL823ZgrV9FdpNPdy7A7RNmM0M2Yz';
+    $user = 'NmM0M2YzYmJhYTBjMTI3YjczMzM4ZTZjZGM5NzUzNTA';
     $pass = '';
-    $url = $scheme . '://' . $host . '/api/compile';
+    $url = $scheme . '://' . $user . '@' . $host . '/api/compile';
     $data = array(
       'file' => url($sass_filepath, array('absolute'=>TRUE)),
       'http_images_path' => $options['http_images_path'],
     );
-
-    if ($_SERVER['PANTHEON_ENVIRONMENT'] != 'live') {
-      if(variable_get('sonar_auth_user')) $data['auth_user'] = variable_get('sonar_auth_user');
-      if(variable_get('sonar_auth_pass')) $data['auth_pass'] = variable_get('sonar_auth_pass');
-    }
-
     $full_url = url($url, array('query' => $data));
+    $options = array(
+      'method' => 'POST',
+      'headers' => array(
+        'Content-Type' => 'text/html; charset=UTF-8',
+      ),
+      'timeout' => 8,
+    );
+
+    // $process = curl_init($full_url);
+    // //curl_setopt($process, CURLOPT_HTTPHEADER, array('Content-Type: application/html', $additionalHeaders));
+    // curl_setopt($process, CURLOPT_HEADER, 1);
+    // curl_setopt($process, CURLOPT_USERPWD, $user . ":" . $pass);
+    // curl_setopt($process, CURLOPT_TIMEOUT, 8);
+    // //curl_setopt($process, CURLOPT_POST, 1);
+    // //curl_setopt($process, CURLOPT_POSTFIELDS, $payloadName);
+    // curl_setopt($process, CURLOPT_RETURNTRANSFER, TRUE);
+    // $return = curl_exec($process);
+    // dsm($return);
+    // curl_close($process);
 
     // Get cURL resource
     $curl = curl_init();
@@ -270,7 +265,6 @@ function sonar_parse_remote($data, $file, $options){
     ));
     // Send the request & save response to $resp
     $response = curl_exec($curl);
-    $json = json_decode($response);
     $code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
     // Close request to clear up some resources
     curl_close($curl);
@@ -283,7 +277,7 @@ function sonar_parse_remote($data, $file, $options){
         break;
 
       case 400:
-        watchdog('sonar', 'Bad Request - '.$json->message.'.', NULL, WATCHDOG_DEBUG, NULL);
+        watchdog('sonar', 'Bad Request - Often missing a required parameter.', NULL, WATCHDOG_DEBUG, NULL);
         break;
 
       case 401:
@@ -299,7 +293,8 @@ function sonar_parse_remote($data, $file, $options){
         break;
 
       case 200:
-        if(!empty($json)){
+        if(!empty($response)){
+          $json = json_decode($response);
           // Compiled CSS data was returned.
           if(!empty($json->css)){
             $error = FALSE;
@@ -334,8 +329,7 @@ function sonar_parse_remote($data, $file, $options){
     watchdog('sonar', '<pre>' . $e->getMessage() . '</pre>', NULL, WATCHDOG_DEBUG, NULL);
   }
 
-  global $user;
-  if($error && $user->uid == 1){
+  if($error){
     drupal_set_message(t('Could not remote compile the file <code>!file</code>. Please consult your !watchdog for a detailed error description.', array('!file' => basename($file['data']), '!watchdog' => l('log messages', 'admin/reports/dblog'))), 'error');
   }
 
@@ -472,3 +466,1788 @@ function sonar_files($items) {
   }
   return $files;
 }
+
+///////////////////////////////////////////
+// MOVED FROM ASSETIC SINCE WE CAN'T USE //
+//   NAMESPACES WITH OUR SHARED SERVER   //
+///////////////////////////////////////////
+
+/**
+ * Represents an asset loaded from a file.
+ *
+ * @author Kris Wallsmith <kris.wallsmith@gmail.com>
+ */
+class FileAsset extends BaseAsset
+{
+    private $source;
+
+    /**
+     * Constructor.
+     *
+     * @param string $source     An absolute path
+     * @param array  $filters    An array of filters
+     * @param string $sourceRoot The source asset root directory
+     * @param string $sourcePath The source asset path
+     * @param array  $vars
+     *
+     * @throws \InvalidArgumentException If the supplied root doesn't match the source when guessing the path
+     */
+    public function __construct($source, $filters = array(), $sourceRoot = null, $sourcePath = null, array $vars = array())
+    {
+        if (null === $sourceRoot) {
+            $sourceRoot = dirname($source);
+            if (null === $sourcePath) {
+                $sourcePath = basename($source);
+            }
+        } elseif (null === $sourcePath) {
+            if (0 !== strpos($source, $sourceRoot)) {
+                throw new \InvalidArgumentException(sprintf('The source "%s" is not in the root directory "%s"', $source, $sourceRoot));
+            }
+
+            $sourcePath = substr($source, strlen($sourceRoot) + 1);
+        }
+
+        $this->source = $source;
+
+        parent::__construct($filters, $sourceRoot, $sourcePath, $vars);
+    }
+
+    public function load(FilterInterface $additionalFilter = null)
+    {
+        $source = PathUtils::resolvePath($this->source, $this->getVars(), $this->getValues());
+
+        if (!is_file($source)) {
+            throw new \RuntimeException(sprintf('The source file "%s" does not exist.', $source));
+        }
+
+        $this->doLoad(file_get_contents($source), $additionalFilter);
+    }
+
+    public function getLastModified()
+    {
+        $source = PathUtils::resolvePath($this->source, $this->getVars(), $this->getValues());
+
+        if (!is_file($source)) {
+            throw new \RuntimeException(sprintf('The source file "%s" does not exist.', $source));
+        }
+
+        return filemtime($source);
+    }
+}
+
+/**
+ * Process builder.
+ *
+ * @author Kris Wallsmith <kris@symfony.com>
+ */
+class ProcessBuilder
+{
+    private $arguments;
+    private $cwd;
+    private $env;
+    private $stdin;
+    private $timeout;
+    private $options;
+    private $inheritEnv;
+
+    public function __construct(array $arguments = array())
+    {
+        $this->arguments = $arguments;
+
+        $this->timeout = 60;
+        $this->options = array();
+        $this->env = array();
+        $this->inheritEnv = true;
+    }
+
+    public static function create(array $arguments = array())
+    {
+        return new static($arguments);
+    }
+
+    /**
+     * Adds an unescaped argument to the command string.
+     *
+     * @param string $argument A command argument
+     */
+    public function add($argument)
+    {
+        $this->arguments[] = $argument;
+
+        return $this;
+    }
+
+    public function setWorkingDirectory($cwd)
+    {
+        $this->cwd = $cwd;
+
+        return $this;
+    }
+
+    public function inheritEnvironmentVariables($inheritEnv = true)
+    {
+        $this->inheritEnv = $inheritEnv;
+
+        return $this;
+    }
+
+    public function setEnv($name, $value)
+    {
+        $this->env[$name] = $value;
+
+        return $this;
+    }
+
+    public function setInput($stdin)
+    {
+        $this->stdin = $stdin;
+
+        return $this;
+    }
+
+    /**
+     * Sets the process timeout.
+     *
+     * To disable the timeout, set this value to null.
+     *
+     * @param integer|null
+     */
+    public function setTimeout($timeout)
+    {
+        if (null === $timeout) {
+            $this->timeout = null;
+
+            return $this;
+        }
+
+        $timeout = (integer) $timeout;
+
+        if ($timeout < 0) {
+            throw new InvalidArgumentException('The timeout value must be a valid positive integer.');
+        }
+
+        $this->timeout = $timeout;
+
+        return $this;
+    }
+
+    public function setOption($name, $value)
+    {
+        $this->options[$name] = $value;
+
+        return $this;
+    }
+
+    public function getProcess()
+    {
+        if (!count($this->arguments)) {
+            throw new LogicException('You must add() command arguments before calling getProcess().');
+        }
+
+        $options = $this->options;
+
+        $script = implode(' ', array_map('escapeshellarg', $this->arguments));
+
+        if ($this->inheritEnv) {
+            $env = $this->env ? $this->env + $_ENV : null;
+        } else {
+            $env = $this->env;
+        }
+
+        return new Process($script, $this->cwd, $env, $this->stdin, $this->timeout, $options);
+    }
+}
+
+/**
+ * Loads Compass files.
+ *
+ * @link http://compass-style.org/
+ * @author Maxime Thirouin <maxime.thirouin@gmail.com>
+ */
+class CompassFilter
+{
+    private $compassPath;
+    private $rubyPath;
+    private $scss;
+
+    // sass options
+    private $unixNewlines;
+    private $debugInfo;
+    private $cacheLocation;
+    private $noCache;
+
+    // compass options
+    private $force;
+    private $style;
+    private $quiet;
+    private $boring;
+    private $noLineComments;
+    private $imagesDir;
+    private $javascriptsDir;
+
+    // compass configuration file options
+    private $plugins = array();
+    private $loadPaths = array();
+    private $httpPath;
+    private $httpImagesPath;
+    private $httpGeneratedImagesPath;
+    private $generatedImagesPath;
+    private $httpJavascriptsPath;
+    private $homeEnv = true;
+
+    public function __construct($compassPath = '/usr/bin/compass', $rubyPath = null)
+    {
+        $this->compassPath = $compassPath;
+        $this->rubyPath = $rubyPath;
+        $this->cacheLocation = sys_get_temp_dir();
+
+        if ('cli' !== php_sapi_name()) {
+            $this->boring = true;
+        }
+    }
+
+    public function setScss($scss)
+    {
+        $this->scss = $scss;
+    }
+
+    // sass options setters
+    public function setUnixNewlines($unixNewlines)
+    {
+        $this->unixNewlines = $unixNewlines;
+    }
+
+    public function setDebugInfo($debugInfo)
+    {
+        $this->debugInfo = $debugInfo;
+    }
+
+    public function setCacheLocation($cacheLocation)
+    {
+        $this->cacheLocation = $cacheLocation;
+    }
+
+    public function setNoCache($noCache)
+    {
+        $this->noCache = $noCache;
+    }
+
+    // compass options setters
+    public function setForce($force)
+    {
+        $this->force = $force;
+    }
+
+    public function setStyle($style)
+    {
+        $this->style = $style;
+    }
+
+    public function setQuiet($quiet)
+    {
+        $this->quiet = $quiet;
+    }
+
+    public function setBoring($boring)
+    {
+        $this->boring = $boring;
+    }
+
+    public function setNoLineComments($noLineComments)
+    {
+        $this->noLineComments = $noLineComments;
+    }
+
+    public function setImagesDir($imagesDir)
+    {
+        $this->imagesDir = $imagesDir;
+    }
+
+    public function setJavascriptsDir($javascriptsDir)
+    {
+        $this->javascriptsDir = $javascriptsDir;
+    }
+
+    // compass configuration file options setters
+    public function setPlugins(array $plugins)
+    {
+        $this->plugins = $plugins;
+    }
+
+    public function addPlugin($plugin)
+    {
+        $this->plugins[] = $plugin;
+    }
+
+    public function setLoadPaths(array $loadPaths)
+    {
+        $this->loadPaths = $loadPaths;
+    }
+
+    public function addLoadPath($loadPath)
+    {
+        $this->loadPaths[] = $loadPath;
+    }
+
+    public function setHttpPath($httpPath)
+    {
+        $this->httpPath = $httpPath;
+    }
+
+    public function setHttpImagesPath($httpImagesPath)
+    {
+        $this->httpImagesPath = $httpImagesPath;
+    }
+
+    public function setHttpGeneratedImagesPath($httpGeneratedImagesPath)
+    {
+        $this->httpGeneratedImagesPath = $httpGeneratedImagesPath;
+    }
+
+    public function setGeneratedImagesPath($generatedImagesPath)
+    {
+        $this->generatedImagesPath = $generatedImagesPath;
+    }
+
+    public function setHttpJavascriptsPath($httpJavascriptsPath)
+    {
+        $this->httpJavascriptsPath = $httpJavascriptsPath;
+    }
+
+    public function setHomeEnv($homeEnv)
+    {
+        $this->homeEnv = $homeEnv;
+    }
+
+    public function filterLoad($asset)
+    {
+        $root = $asset->getSourceRoot();
+        $path = $asset->getSourcePath();
+
+        $loadPaths = $this->loadPaths;
+        if ($root && $path) {
+            $loadPaths[] = dirname($root.'/'.$path);
+        }
+
+        // compass does not seems to handle symlink, so we use realpath()
+        $tempDir = realpath(sys_get_temp_dir());
+
+        $compassProcessArgs = array(
+            $this->compassPath,
+            'compile',
+            $tempDir,
+        );
+        if (null !== $this->rubyPath) {
+            $compassProcessArgs = array_merge(explode(' ', $this->rubyPath), $compassProcessArgs);
+        }
+
+        $pb = new ProcessBuilder($compassProcessArgs);
+        $pb->inheritEnvironmentVariables();
+
+        if ($this->force) {
+            $pb->add('--force');
+        }
+
+        if ($this->style) {
+            $pb->add('--output-style')->add($this->style);
+        }
+
+        if ($this->quiet) {
+            $pb->add('--quiet');
+        }
+
+        if ($this->boring) {
+            $pb->add('--boring');
+        }
+
+        if ($this->noLineComments) {
+            $pb->add('--no-line-comments');
+        }
+
+        // these two options are not passed into the config file
+        // because like this, compass adapts this to be xxx_dir or xxx_path
+        // whether it's an absolute path or not
+        if ($this->imagesDir) {
+            $pb->add('--images-dir')->add($this->imagesDir);
+        }
+
+        if ($this->javascriptsDir) {
+            $pb->add('--javascripts-dir')->add($this->javascriptsDir);
+        }
+
+        // options in config file
+        $optionsConfig = array();
+
+        if (!empty($loadPaths)) {
+            $optionsConfig['additional_import_paths'] = $loadPaths;
+        }
+
+        if ($this->unixNewlines) {
+            $optionsConfig['sass_options']['unix_newlines'] = true;
+        }
+
+        if ($this->debugInfo) {
+            $optionsConfig['sass_options']['debug_info'] = true;
+        }
+
+        if ($this->cacheLocation) {
+            $optionsConfig['sass_options']['cache_location'] = $this->cacheLocation;
+        }
+
+        if ($this->noCache) {
+            $optionsConfig['sass_options']['no_cache'] = true;
+        }
+
+        if ($this->httpPath) {
+            $optionsConfig['http_path'] = $this->httpPath;
+        }
+
+        if ($this->httpImagesPath) {
+            $optionsConfig['http_images_path'] = $this->httpImagesPath;
+        }
+
+        if ($this->httpGeneratedImagesPath) {
+            $optionsConfig['http_generated_images_path'] = $this->httpGeneratedImagesPath;
+        }
+
+        if ($this->generatedImagesPath) {
+            $optionsConfig['generated_images_path'] = $this->generatedImagesPath;
+        }
+
+        if ($this->httpJavascriptsPath) {
+            $optionsConfig['http_javascripts_path'] = $this->httpJavascriptsPath;
+        }
+
+        // options in configuration file
+        if (count($optionsConfig)) {
+            $config = array();
+            foreach ($this->plugins as $plugin) {
+                $config[] = sprintf("require '%s'", addcslashes($plugin, '\\'));
+            }
+            foreach ($optionsConfig as $name => $value) {
+                if (!is_array($value)) {
+                    $config[] = sprintf('%s = "%s"', $name, addcslashes($value, '\\'));
+                } elseif (!empty($value)) {
+                    $config[] = sprintf('%s = %s', $name, $this->formatArrayToRuby($value));
+                }
+            }
+
+            $configFile = tempnam($tempDir, 'assetic_compass');
+            file_put_contents($configFile, implode("\n", $config)."\n");
+            $pb->add('--config')->add($configFile);
+        }
+
+        $pb->add('--sass-dir')->add('')->add('--css-dir')->add('');
+
+        // compass choose the type (sass or scss from the filename)
+        if (null !== $this->scss) {
+            $type = $this->scss ? 'scss' : 'sass';
+        } elseif ($path) {
+            // FIXME: what if the extension is something else?
+            $type = pathinfo($path, PATHINFO_EXTENSION);
+        } else {
+            $type = 'scss';
+        }
+
+        $tempName = tempnam($tempDir, 'assetic_compass');
+        unlink($tempName); // FIXME: don't use tempnam() here
+
+        // input
+        $input = $tempName.'.'.$type;
+
+        // work-around for https://github.com/chriseppstein/compass/issues/748
+        if (defined('PHP_WINDOWS_VERSION_MAJOR')) {
+            $input = str_replace('\\', '/', $input);
+        }
+
+        $pb->add($input);
+        file_put_contents($input, $asset->getContent());
+
+        // output
+        $output = $tempName.'.css';
+
+        if ($this->homeEnv) {
+            // it's not really usefull but... https://github.com/chriseppstein/compass/issues/376
+            $pb->setEnv('HOME', sys_get_temp_dir());
+        }
+
+        $proc = $pb->getProcess();
+        $code = $proc->run();
+
+        if (0 < $code) {
+            unlink($input);
+            if (isset($configFile)) {
+                unlink($configFile);
+            }
+
+            throw FilterException::fromProcess($proc)->setInput($asset->getContent());
+        }
+
+        $asset->setContent(file_get_contents($output));
+
+        unlink($input);
+        unlink($output);
+        if (isset($configFile)) {
+            unlink($configFile);
+        }
+    }
+
+    public function filterDump($asset)
+    {
+    }
+
+    private function formatArrayToRuby($array)
+    {
+        $output = array();
+
+        // does we have an associative array ?
+        if (count(array_filter(array_keys($array), "is_numeric")) != count($array)) {
+            foreach ($array as $name => $value) {
+                $output[] = sprintf('    :%s => "%s"', $name, addcslashes($value, '\\'));
+            }
+            $output = "{\n".implode(",\n", $output)."\n}";
+        } else {
+            foreach ($array as $name => $value) {
+                $output[] = sprintf('    "%s"', addcslashes($value, '\\'));
+            }
+            $output = "[\n".implode(",\n", $output)."\n]";
+        }
+
+        return $output;
+    }
+}
+
+/**
+ * A base abstract asset.
+ *
+ * The methods load() and getLastModified() are left undefined, although a
+ * reusable doLoad() method is available to child classes.
+ *
+ * @author Kris Wallsmith <kris.wallsmith@gmail.com>
+ */
+abstract class BaseAsset
+{
+    private $filters;
+    private $sourceRoot;
+    private $sourcePath;
+    private $targetPath;
+    private $content;
+    private $loaded;
+    private $vars;
+    private $values;
+
+    /**
+     * Constructor.
+     *
+     * @param array  $filters    Filters for the asset
+     * @param string $sourceRoot The root directory
+     * @param string $sourcePath The asset path
+     * @param array  $vars
+     */
+    public function __construct($filters = array(), $sourceRoot = null, $sourcePath = null, array $vars = array())
+    {
+        $this->filters = new FilterCollection($filters);
+        $this->sourceRoot = $sourceRoot;
+        $this->sourcePath = $sourcePath;
+        $this->vars = $vars;
+        $this->values = array();
+        $this->loaded = false;
+    }
+
+    public function __clone()
+    {
+        $this->filters = clone $this->filters;
+    }
+
+    public function ensureFilter(FilterInterface $filter)
+    {
+        $this->filters->ensure($filter);
+    }
+
+    public function getFilters()
+    {
+        return $this->filters->all();
+    }
+
+    public function clearFilters()
+    {
+        $this->filters->clear();
+    }
+
+    /**
+     * Encapsulates asset loading logic.
+     *
+     * @param string          $content          The asset content
+     * @param FilterInterface $additionalFilter An additional filter
+     */
+    protected function doLoad($content, FilterInterface $additionalFilter = null)
+    {
+        $filter = clone $this->filters;
+        if ($additionalFilter) {
+            $filter->ensure($additionalFilter);
+        }
+
+        $asset = clone $this;
+        $asset->setContent($content);
+
+        $filter->filterLoad($asset);
+        $this->content = $asset->getContent();
+
+        $this->loaded = true;
+    }
+
+    public function dump(FilterInterface $additionalFilter = null)
+    {
+        if (!$this->loaded) {
+            $this->load();
+        }
+
+        $filter = clone $this->filters;
+        if ($additionalFilter) {
+            $filter->ensure($additionalFilter);
+        }
+
+        $asset = clone $this;
+        $filter->filterDump($asset);
+
+        return $asset->getContent();
+    }
+
+    public function getContent()
+    {
+        return $this->content;
+    }
+
+    public function setContent($content)
+    {
+        $this->content = $content;
+    }
+
+    public function getSourceRoot()
+    {
+        return $this->sourceRoot;
+    }
+
+    public function getSourcePath()
+    {
+        return $this->sourcePath;
+    }
+
+    public function getTargetPath()
+    {
+        return $this->targetPath;
+    }
+
+    public function setTargetPath($targetPath)
+    {
+        if ($this->vars) {
+            foreach ($this->vars as $var) {
+                if (false === strpos($targetPath, $var)) {
+                    throw new \RuntimeException(sprintf('The asset target path "%s" must contain the variable "{%s}".', $targetPath, $var));
+                }
+            }
+        }
+
+        $this->targetPath = $targetPath;
+    }
+
+    public function getVars()
+    {
+        return $this->vars;
+    }
+
+    public function setValues(array $values)
+    {
+        foreach ($values as $var => $v) {
+            if (!in_array($var, $this->vars, true)) {
+                throw new \InvalidArgumentException(sprintf('The asset with source path "%s" has no variable named "%s".', $this->sourcePath, $var));
+            }
+        }
+
+        $this->values = $values;
+        $this->loaded = false;
+    }
+
+    public function getValues()
+    {
+        return $this->values;
+    }
+}
+
+/**
+ * A collection of filters.
+ *
+ * @author Kris Wallsmith <kris.wallsmith@gmail.com>
+ */
+class FilterCollection implements IteratorAggregate, Countable
+{
+    private $filters = array();
+
+    public function __construct($filters = array())
+    {
+        foreach ($filters as $filter) {
+            $this->ensure($filter);
+        }
+    }
+
+    /**
+     * Checks that the current collection contains the supplied filter.
+     *
+     * If the supplied filter is another filter collection, each of its
+     * filters will be checked.
+     */
+    public function ensure($filter)
+    {
+        if ($filter instanceof \Traversable) {
+            foreach ($filter as $f) {
+                $this->ensure($f);
+            }
+        } elseif (!in_array($filter, $this->filters, true)) {
+            $this->filters[] = $filter;
+        }
+    }
+
+    public function all()
+    {
+        return $this->filters;
+    }
+
+    public function clear()
+    {
+        $this->filters = array();
+    }
+
+    public function filterLoad($asset)
+    {
+        foreach ($this->filters as $filter) {
+            $filter->filterLoad($asset);
+        }
+    }
+
+    public function filterDump($asset)
+    {
+        foreach ($this->filters as $filter) {
+            $filter->filterDump($asset);
+        }
+    }
+
+    public function getIterator()
+    {
+        return new \ArrayIterator($this->filters);
+    }
+
+    public function count()
+    {
+        return count($this->filters);
+    }
+}
+
+/**
+ * Path Utils.
+ *
+ * @author Johannes M. Schmitt <schmittjoh@gmail.com>
+ */
+abstract class PathUtils
+{
+    public static function resolvePath($path, array $vars, array $values)
+    {
+        $map = array();
+        foreach ($vars as $var) {
+            if (false === strpos($path, '{'.$var.'}')) {
+                continue;
+            }
+
+            if (!isset($values[$var])) {
+                throw new \InvalidArgumentException(sprintf('The path "%s" contains the variable "%s", but was not given any value for it.', $path, $var));
+            }
+
+            $map['{'.$var.'}'] = $values[$var];
+        }
+
+        return strtr($path, $map);
+    }
+
+    final private function __construct() { }
+}
+
+/**
+ * Process is a thin wrapper around proc_* functions to ease
+ * start independent PHP processes.
+ *
+ * @author Fabien Potencier <fabien@symfony.com>
+ *
+ * @api
+ */
+class Process
+{
+    const ERR = 'err';
+    const OUT = 'out';
+
+    const STATUS_READY = 'ready';
+    const STATUS_STARTED = 'started';
+    const STATUS_TERMINATED = 'terminated';
+
+    const STDIN = 0;
+    const STDOUT = 1;
+    const STDERR = 2;
+
+    private $commandline;
+    private $cwd;
+    private $env;
+    private $stdin;
+    private $timeout;
+    private $options;
+    private $exitcode;
+    private $fallbackExitcode;
+    private $processInformation;
+    private $stdout;
+    private $stderr;
+    private $enhanceWindowsCompatibility;
+    private $enhanceSigchildCompatibility;
+    private $pipes;
+    private $process;
+    private $status = self::STATUS_READY;
+
+    private $fileHandles;
+    private $readBytes;
+
+    private static $sigchild;
+
+    /**
+     * Exit codes translation table.
+     *
+     * User-defined errors must use exit codes in the 64-113 range.
+     *
+     * @var array
+     */
+    public static $exitCodes = array(
+        0 => 'OK',
+        1 => 'General error',
+        2 => 'Misuse of shell builtins',
+
+        126 => 'Invoked command cannot execute',
+        127 => 'Command not found',
+        128 => 'Invalid exit argument',
+
+        // signals
+        129 => 'Hangup',
+        130 => 'Interrupt',
+        131 => 'Quit and dump core',
+        132 => 'Illegal instruction',
+        133 => 'Trace/breakpoint trap',
+        134 => 'Process aborted',
+        135 => 'Bus error: "access to undefined portion of memory object"',
+        136 => 'Floating point exception: "erroneous arithmetic operation"',
+        137 => 'Kill (terminate immediately)',
+        138 => 'User-defined 1',
+        139 => 'Segmentation violation',
+        140 => 'User-defined 2',
+        141 => 'Write to pipe with no one reading',
+        142 => 'Signal raised by alarm',
+        143 => 'Termination (request to terminate)',
+        // 144 - not defined
+        145 => 'Child process terminated, stopped (or continued*)',
+        146 => 'Continue if stopped',
+        147 => 'Stop executing temporarily',
+        148 => 'Terminal stop signal',
+        149 => 'Background process attempting to read from tty ("in")',
+        150 => 'Background process attempting to write to tty ("out")',
+        151 => 'Urgent data available on socket',
+        152 => 'CPU time limit exceeded',
+        153 => 'File size limit exceeded',
+        154 => 'Signal raised by timer counting virtual time: "virtual timer expired"',
+        155 => 'Profiling timer expired',
+        // 156 - not defined
+        157 => 'Pollable event',
+        // 158 - not defined
+        159 => 'Bad syscall',
+    );
+
+    /**
+     * Constructor.
+     *
+     * @param string  $commandline The command line to run
+     * @param string  $cwd         The working directory
+     * @param array   $env         The environment variables or null to inherit
+     * @param string  $stdin       The STDIN content
+     * @param integer $timeout     The timeout in seconds
+     * @param array   $options     An array of options for proc_open
+     *
+     * @throws RuntimeException When proc_open is not installed
+     *
+     * @api
+     */
+    public function __construct($commandline, $cwd = null, array $env = null, $stdin = null, $timeout = 60, array $options = array())
+    {
+        if (!function_exists('proc_open')) {
+            throw new RuntimeException('The Process class relies on proc_open, which is not available on your PHP installation.');
+        }
+
+        $this->commandline = $commandline;
+        $this->cwd = null === $cwd ? getcwd() : $cwd;
+        if (null !== $env) {
+            $this->env = array();
+            foreach ($env as $key => $value) {
+                $this->env[(binary) $key] = (binary) $value;
+            }
+        } else {
+            $this->env = null;
+        }
+        $this->stdin = $stdin;
+        $this->setTimeout($timeout);
+        $this->enhanceWindowsCompatibility = true;
+        $this->enhanceSigchildCompatibility = !defined('PHP_WINDOWS_VERSION_BUILD') && $this->isSigchildEnabled();
+        $this->options = array_replace(array('suppress_errors' => true, 'binary_pipes' => true), $options);
+    }
+
+    public function __destruct()
+    {
+        // stop() will check if we have a process running.
+        $this->stop();
+    }
+
+    public function __clone()
+    {
+        $this->exitcode = null;
+        $this->fallbackExitcode = null;
+        $this->processInformation = null;
+        $this->stdout = null;
+        $this->stderr = null;
+        $this->pipes = null;
+        $this->process = null;
+        $this->status = self::STATUS_READY;
+        $this->fileHandles = null;
+        $this->readBytes = null;
+    }
+
+    /**
+     * Runs the process.
+     *
+     * The callback receives the type of output (out or err) and
+     * some bytes from the output in real-time. It allows to have feedback
+     * from the independent process during execution.
+     *
+     * The STDOUT and STDERR are also available after the process is finished
+     * via the getOutput() and getErrorOutput() methods.
+     *
+     * @param callable $callback A PHP callback to run whenever there is some
+     *                           output available on STDOUT or STDERR
+     *
+     * @return integer The exit status code
+     *
+     * @throws RuntimeException When process can't be launch or is stopped
+     *
+     * @api
+     */
+    public function run($callback = null)
+    {
+        $this->start($callback);
+
+        return $this->wait($callback);
+    }
+
+    /**
+     * Starts the process and returns after sending the STDIN.
+     *
+     * This method blocks until all STDIN data is sent to the process then it
+     * returns while the process runs in the background.
+     *
+     * The termination of the process can be awaited with wait().
+     *
+     * The callback receives the type of output (out or err) and some bytes from
+     * the output in real-time while writing the standard input to the process.
+     * It allows to have feedback from the independent process during execution.
+     * If there is no callback passed, the wait() method can be called
+     * with true as a second parameter then the callback will get all data occurred
+     * in (and since) the start call.
+     *
+     * @param callable $callback A PHP callback to run whenever there is some
+     *                           output available on STDOUT or STDERR
+     *
+     * @throws RuntimeException When process can't be launch or is stopped
+     * @throws RuntimeException When process is already running
+     */
+    public function start($callback = null)
+    {
+        if ($this->isRunning()) {
+            throw new RuntimeException('Process is already running');
+        }
+
+        $this->stdout = '';
+        $this->stderr = '';
+        $callback = $this->buildCallback($callback);
+
+        //Fix for PHP bug #51800: reading from STDOUT pipe hangs forever on Windows if the output is too big.
+        //Workaround for this problem is to use temporary files instead of pipes on Windows platform.
+        //@see https://bugs.php.net/bug.php?id=51800
+        if (defined('PHP_WINDOWS_VERSION_BUILD')) {
+            $this->fileHandles = array(
+                self::STDOUT => tmpfile(),
+            );
+            $this->readBytes = array(
+                self::STDOUT => 0,
+            );
+            $descriptors = array(array('pipe', 'r'), $this->fileHandles[self::STDOUT], array('pipe', 'w'));
+        } else {
+            $descriptors = array(
+                array('pipe', 'r'), // stdin
+                array('pipe', 'w'), // stdout
+                array('pipe', 'w'), // stderr
+            );
+
+            if ($this->enhanceSigchildCompatibility && $this->isSigchildEnabled()) {
+                // last exit code is output on the fourth pipe and caught to work around --enable-sigchild
+                $descriptors = array_merge($descriptors, array(array('pipe', 'w')));
+
+                $this->commandline = '('.$this->commandline.') 3>/dev/null; code=$?; echo $code >&3; exit $code';
+            }
+        }
+
+        $commandline = $this->commandline;
+
+        if (defined('PHP_WINDOWS_VERSION_BUILD') && $this->enhanceWindowsCompatibility) {
+            $commandline = 'cmd /V:ON /E:ON /C "'.$commandline.'"';
+            if (!isset($this->options['bypass_shell'])) {
+                $this->options['bypass_shell'] = true;
+            }
+        }
+
+        $this->process = proc_open($commandline, $descriptors, $this->pipes, $this->cwd, $this->env, $this->options);
+
+        if (!is_resource($this->process)) {
+            throw new RuntimeException('Unable to launch a new process.');
+        }
+        $this->status = self::STATUS_STARTED;
+
+        foreach ($this->pipes as $pipe) {
+            stream_set_blocking($pipe, false);
+        }
+
+        if (null === $this->stdin) {
+            fclose($this->pipes[0]);
+            unset($this->pipes[0]);
+
+            return;
+        }
+
+        $writePipes = array($this->pipes[0]);
+        unset($this->pipes[0]);
+        $stdinLen = strlen($this->stdin);
+        $stdinOffset = 0;
+
+        while ($writePipes) {
+            if (defined('PHP_WINDOWS_VERSION_BUILD')) {
+                $this->processFileHandles($callback);
+            }
+
+            $r = $this->pipes;
+            $w = $writePipes;
+            $e = null;
+
+            $n = @stream_select($r, $w, $e, $this->timeout);
+
+            if (false === $n) {
+                break;
+            }
+            if ($n === 0) {
+                proc_terminate($this->process);
+
+                throw new RuntimeException('The process timed out.');
+            }
+
+            if ($w) {
+                $written = fwrite($writePipes[0], (binary) substr($this->stdin, $stdinOffset), 8192);
+                if (false !== $written) {
+                    $stdinOffset += $written;
+                }
+                if ($stdinOffset >= $stdinLen) {
+                    fclose($writePipes[0]);
+                    $writePipes = null;
+                }
+            }
+
+            foreach ($r as $pipe) {
+                $type = array_search($pipe, $this->pipes);
+                $data = fread($pipe, 8192);
+                if (strlen($data) > 0) {
+                    call_user_func($callback, $type == 1 ? self::OUT : self::ERR, $data);
+                }
+                if (false === $data || feof($pipe)) {
+                    fclose($pipe);
+                    unset($this->pipes[$type]);
+                }
+            }
+        }
+
+        $this->updateStatus();
+    }
+
+    /**
+     * Restarts the process.
+     *
+     * Be warned that the process is cloned before being started.
+     *
+     * @param callable $callback A PHP callback to run whenever there is some
+     *                           output available on STDOUT or STDERR
+     *
+     * @return Process The new process
+     *
+     * @throws \RuntimeException When process can't be launch or is stopped
+     * @throws \RuntimeException When process is already running
+     *
+     * @see start()
+     */
+    public function restart($callback = null)
+    {
+        if ($this->isRunning()) {
+            throw new \RuntimeException('Process is already running');
+        }
+
+        $process = clone $this;
+        $process->start($callback);
+
+        return $process;
+    }
+
+    /**
+     * Waits for the process to terminate.
+     *
+     * The callback receives the type of output (out or err) and some bytes
+     * from the output in real-time while writing the standard input to the process.
+     * It allows to have feedback from the independent process during execution.
+     *
+     * @param callable $callback A valid PHP callback
+     *
+     * @return int The exitcode of the process
+     *
+     * @throws RuntimeException
+     */
+    public function wait($callback = null)
+    {
+        $this->updateStatus();
+        $callback = $this->buildCallback($callback);
+        while ($this->pipes || (defined('PHP_WINDOWS_VERSION_BUILD') && $this->fileHandles)) {
+            if (defined('PHP_WINDOWS_VERSION_BUILD') && $this->fileHandles) {
+                $this->processFileHandles($callback, !$this->pipes);
+            }
+
+            if ($this->pipes) {
+                $r = $this->pipes;
+                $w = null;
+                $e = null;
+
+                $n = @stream_select($r, $w, $e, $this->timeout);
+
+                if (false === $n) {
+                    $this->pipes = array();
+
+                    continue;
+                }
+                if (0 === $n) {
+                    proc_terminate($this->process);
+
+                    throw new RuntimeException('The process timed out.');
+                }
+
+                foreach ($r as $pipe) {
+                    $type = array_search($pipe, $this->pipes);
+                    $data = fread($pipe, 8192);
+
+                    if (strlen($data) > 0) {
+                        // last exit code is output and caught to work around --enable-sigchild
+                        if (3 == $type) {
+                            $this->fallbackExitcode = (int) $data;
+                        } else {
+                            call_user_func($callback, $type == 1 ? self::OUT : self::ERR, $data);
+                        }
+                    }
+                    if (false === $data || feof($pipe)) {
+                        fclose($pipe);
+                        unset($this->pipes[$type]);
+                    }
+                }
+            }
+        }
+        $this->updateStatus();
+        if ($this->processInformation['signaled']) {
+            throw new RuntimeException(sprintf('The process stopped because of a "%s" signal.', $this->processInformation['stopsig']));
+        }
+
+        $time = 0;
+        while ($this->isRunning() && $time < 1000000) {
+            $time += 1000;
+            usleep(1000);
+        }
+
+        $exitcode = proc_close($this->process);
+
+        if ($this->processInformation['signaled']) {
+            throw new RuntimeException(sprintf('The process stopped because of a "%s" signal.', $this->processInformation['stopsig']));
+        }
+
+        $this->exitcode = $this->processInformation['running'] ? $exitcode : $this->processInformation['exitcode'];
+
+        if (-1 == $this->exitcode && null !== $this->fallbackExitcode) {
+            $this->exitcode = $this->fallbackExitcode;
+        }
+
+        return $this->exitcode;
+    }
+
+    /**
+     * Returns the current output of the process (STDOUT).
+     *
+     * @return string The process output
+     *
+     * @api
+     */
+    public function getOutput()
+    {
+        $this->updateOutput();
+
+        return $this->stdout;
+    }
+
+    /**
+     * Returns the current error output of the process (STDERR).
+     *
+     * @return string The process error output
+     *
+     * @api
+     */
+    public function getErrorOutput()
+    {
+        $this->updateErrorOutput();
+
+        return $this->stderr;
+    }
+
+    /**
+     * Returns the exit code returned by the process.
+     *
+     * @return integer The exit status code
+     *
+     * @throws RuntimeException In case --enable-sigchild is activated and the sigchild compatibility mode is disabled
+     *
+     * @api
+     */
+    public function getExitCode()
+    {
+        if ($this->isSigchildEnabled() && !$this->enhanceSigchildCompatibility) {
+            throw new RuntimeException('This PHP has been compiled with --enable-sigchild. You must use setEnhanceSigchildCompatibility() to use this method');
+        }
+
+        $this->updateStatus();
+
+        return $this->exitcode;
+    }
+
+    /**
+     * Returns a string representation for the exit code returned by the process.
+     *
+     * This method relies on the Unix exit code status standardization
+     * and might not be relevant for other operating systems.
+     *
+     * @return string A string representation for the exit status code
+     *
+     * @throws RuntimeException In case --enable-sigchild is activated and the sigchild compatibility mode is disabled
+     *
+     * @see http://tldp.org/LDP/abs/html/exitcodes.html
+     * @see http://en.wikipedia.org/wiki/Unix_signal
+     */
+    public function getExitCodeText()
+    {
+        $exitcode = $this->getExitCode();
+
+        return isset(self::$exitCodes[$exitcode]) ? self::$exitCodes[$exitcode] : 'Unknown error';
+    }
+
+    /**
+     * Checks if the process ended successfully.
+     *
+     * @return Boolean true if the process ended successfully, false otherwise
+     *
+     * @throws RuntimeException In case --enable-sigchild is activated and the sigchild compatibility mode is disabled
+     *
+     * @api
+     */
+    public function isSuccessful()
+    {
+        return 0 == $this->getExitCode();
+    }
+
+    /**
+     * Returns true if the child process has been terminated by an uncaught signal.
+     *
+     * It always returns false on Windows.
+     *
+     * @return Boolean
+     *
+     * @throws RuntimeException In case --enable-sigchild is activated
+     *
+     * @api
+     */
+    public function hasBeenSignaled()
+    {
+        if ($this->isSigchildEnabled()) {
+            throw new RuntimeException('This PHP has been compiled with --enable-sigchild. Term signal can not be retrieved');
+        }
+
+        $this->updateStatus();
+
+        return $this->processInformation['signaled'];
+    }
+
+    /**
+     * Returns the number of the signal that caused the child process to terminate its execution.
+     *
+     * It is only meaningful if hasBeenSignaled() returns true.
+     *
+     * @return integer
+     *
+     * @throws RuntimeException In case --enable-sigchild is activated
+     *
+     * @api
+     */
+    public function getTermSignal()
+    {
+        if ($this->isSigchildEnabled()) {
+            throw new RuntimeException('This PHP has been compiled with --enable-sigchild. Term signal can not be retrieved');
+        }
+
+        $this->updateStatus();
+
+        return $this->processInformation['termsig'];
+    }
+
+    /**
+     * Returns true if the child process has been stopped by a signal.
+     *
+     * It always returns false on Windows.
+     *
+     * @return Boolean
+     *
+     * @api
+     */
+    public function hasBeenStopped()
+    {
+        $this->updateStatus();
+
+        return $this->processInformation['stopped'];
+    }
+
+    /**
+     * Returns the number of the signal that caused the child process to stop its execution.
+     *
+     * It is only meaningful if hasBeenStopped() returns true.
+     *
+     * @return integer
+     *
+     * @api
+     */
+    public function getStopSignal()
+    {
+        $this->updateStatus();
+
+        return $this->processInformation['stopsig'];
+    }
+
+    /**
+     * Checks if the process is currently running.
+     *
+     * @return Boolean true if the process is currently running, false otherwise
+     */
+    public function isRunning()
+    {
+        if (self::STATUS_STARTED !== $this->status) {
+            return false;
+        }
+
+        $this->updateStatus();
+
+        return $this->processInformation['running'];
+    }
+
+    /**
+     * Stops the process.
+     *
+     * @param float $timeout The timeout in seconds
+     *
+     * @return integer The exitcode of the process
+     *
+     * @throws RuntimeException if the process got signaled
+     */
+    public function stop($timeout=10)
+    {
+        $timeoutMicro = (int) $timeout*10E6;
+        if ($this->isRunning()) {
+            proc_terminate($this->process);
+            $time = 0;
+            while (1 == $this->isRunning() && $time < $timeoutMicro) {
+                $time += 1000;
+                usleep(1000);
+            }
+
+            foreach ($this->pipes as $pipe) {
+                fclose($pipe);
+            }
+            $this->pipes = array();
+
+            $exitcode = proc_close($this->process);
+            $this->exitcode = -1 === $this->processInformation['exitcode'] ? $exitcode : $this->processInformation['exitcode'];
+
+            if (defined('PHP_WINDOWS_VERSION_BUILD')) {
+                foreach ($this->fileHandles as $fileHandle) {
+                    fclose($fileHandle);
+                }
+                $this->fileHandles = array();
+            }
+        }
+        $this->status = self::STATUS_TERMINATED;
+
+        return $this->exitcode;
+    }
+
+    /**
+     * Adds a line to the STDOUT stream.
+     *
+     * @param string $line The line to append
+     */
+    public function addOutput($line)
+    {
+        $this->stdout .= $line;
+    }
+
+    /**
+     * Adds a line to the STDERR stream.
+     *
+     * @param string $line The line to append
+     */
+    public function addErrorOutput($line)
+    {
+        $this->stderr .= $line;
+    }
+
+    /**
+     * Gets the command line to be executed.
+     *
+     * @return string The command to execute
+     */
+    public function getCommandLine()
+    {
+        return $this->commandline;
+    }
+
+    /**
+     * Sets the command line to be executed.
+     *
+     * @param string $commandline The command to execute
+     *
+     * @return self The current Process instance
+     */
+    public function setCommandLine($commandline)
+    {
+        $this->commandline = $commandline;
+
+        return $this;
+    }
+
+    /**
+     * Gets the process timeout.
+     *
+     * @return integer|null The timeout in seconds or null if it's disabled
+     */
+    public function getTimeout()
+    {
+        return $this->timeout;
+    }
+
+    /**
+     * Sets the process timeout.
+     *
+     * To disable the timeout, set this value to null.
+     *
+     * @param integer|null $timeout The timeout in seconds
+     *
+     * @return self The current Process instance
+     *
+     * @throws \InvalidArgumentException if the timeout is negative
+     */
+    public function setTimeout($timeout)
+    {
+        if (null === $timeout) {
+            $this->timeout = null;
+
+            return $this;
+        }
+
+        $timeout = (integer) $timeout;
+
+        if ($timeout < 0) {
+            throw new InvalidArgumentException('The timeout value must be a valid positive integer.');
+        }
+
+        $this->timeout = $timeout;
+
+        return $this;
+    }
+
+    /**
+     * Gets the working directory.
+     *
+     * @return string The current working directory
+     */
+    public function getWorkingDirectory()
+    {
+        return $this->cwd;
+    }
+
+    /**
+     * Sets the current working directory.
+     *
+     * @param string $cwd The new working directory
+     *
+     * @return self The current Process instance
+     */
+    public function setWorkingDirectory($cwd)
+    {
+        $this->cwd = $cwd;
+
+        return $this;
+    }
+
+    /**
+     * Gets the environment variables.
+     *
+     * @return array The current environment variables
+     */
+    public function getEnv()
+    {
+        return $this->env;
+    }
+
+    /**
+     * Sets the environment variables.
+     *
+     * @param array $env The new environment variables
+     *
+     * @return self The current Process instance
+     */
+    public function setEnv(array $env)
+    {
+        $this->env = $env;
+
+        return $this;
+    }
+
+    /**
+     * Gets the contents of STDIN.
+     *
+     * @return string The current contents
+     */
+    public function getStdin()
+    {
+        return $this->stdin;
+    }
+
+    /**
+     * Sets the contents of STDIN.
+     *
+     * @param string $stdin The new contents
+     *
+     * @return self The current Process instance
+     */
+    public function setStdin($stdin)
+    {
+        $this->stdin = $stdin;
+
+        return $this;
+    }
+
+    /**
+     * Gets the options for proc_open.
+     *
+     * @return array The current options
+     */
+    public function getOptions()
+    {
+        return $this->options;
+    }
+
+    /**
+     * Sets the options for proc_open.
+     *
+     * @param array $options The new options
+     *
+     * @return self The current Process instance
+     */
+    public function setOptions(array $options)
+    {
+        $this->options = $options;
+
+        return $this;
+    }
+
+    /**
+     * Gets whether or not Windows compatibility is enabled
+     *
+     * This is true by default.
+     *
+     * @return Boolean
+     */
+    public function getEnhanceWindowsCompatibility()
+    {
+        return $this->enhanceWindowsCompatibility;
+    }
+
+    /**
+     * Sets whether or not Windows compatibility is enabled
+     *
+     * @param Boolean $enhance
+     *
+     * @return self The current Process instance
+     */
+    public function setEnhanceWindowsCompatibility($enhance)
+    {
+        $this->enhanceWindowsCompatibility = (Boolean) $enhance;
+
+        return $this;
+    }
+
+    /**
+     * Return whether sigchild compatibility mode is activated or not
+     *
+     * @return Boolean
+     */
+    public function getEnhanceSigchildCompatibility()
+    {
+        return $this->enhanceSigchildCompatibility;
+    }
+
+    /**
+     * Activate sigchild compatibility mode
+     *
+     * Sigchild compatibility mode is required to get the exit code and
+     * determine the success of a process when PHP has been compiled with
+     * the --enable-sigchild option
+     *
+     * @param Boolean $enhance
+     *
+     * @return self The current Process instance
+     */
+    public function setEnhanceSigchildCompatibility($enhance)
+    {
+        $this->enhanceSigchildCompatibility = (Boolean) $enhance;
+
+        return $this;
+    }
+
+    /**
+     * Builds up the callback used by wait().
+     *
+     * The callbacks adds all occurred output to the specific buffer and calls
+     * the user callback (if present) with the received output.
+     *
+     * @param callable $callback The user defined PHP callback
+     *
+     * @return mixed A PHP callable
+     */
+    protected function buildCallback($callback)
+    {
+        $that = $this;
+        $out = self::OUT;
+        $err = self::ERR;
+        $callback = function ($type, $data) use ($that, $callback, $out, $err) {
+            if ($out == $type) {
+                $that->addOutput($data);
+            } else {
+                $that->addErrorOutput($data);
+            }
+
+            if (null !== $callback) {
+                call_user_func($callback, $type, $data);
+            }
+        };
+
+        return $callback;
+    }
+
+    /**
+     * Updates the status of the process.
+     */
+    protected function updateStatus()
+    {
+        if (self::STATUS_STARTED !== $this->status) {
+            return;
+        }
+
+        $this->processInformation = proc_get_status($this->process);
+        if (!$this->processInformation['running']) {
+            $this->status = self::STATUS_TERMINATED;
+            if (-1 !== $this->processInformation['exitcode']) {
+                $this->exitcode = $this->processInformation['exitcode'];
+            }
+        }
+    }
+
+    protected function updateErrorOutput()
+    {
+        if (isset($this->pipes[self::STDERR]) && is_resource($this->pipes[self::STDERR])) {
+            $this->addErrorOutput(stream_get_contents($this->pipes[self::STDERR]));
+        }
+    }
+
+    protected function updateOutput()
+    {
+        if (defined('PHP_WINDOWS_VERSION_BUILD') && isset($this->fileHandles[self::STDOUT]) && is_resource($this->fileHandles[self::STDOUT])) {
+            fseek($this->fileHandles[self::STDOUT], $this->readBytes[self::STDOUT]);
+            $this->addOutput(stream_get_contents($this->fileHandles[self::STDOUT]));
+        } elseif (isset($this->pipes[self::STDOUT]) && is_resource($this->pipes[self::STDOUT])) {
+            $this->addOutput(stream_get_contents($this->pipes[self::STDOUT]));
+        }
+    }
+
+    /**
+     * Return whether PHP has been compiled with the '--enable-sigchild' option or not
+     *
+     * @return Boolean
+     */
+    protected function isSigchildEnabled()
+    {
+        if (null !== self::$sigchild) {
+            return self::$sigchild;
+        }
+
+        ob_start();
+        phpinfo(INFO_GENERAL);
+
+        return self::$sigchild = false !== strpos(ob_get_clean(), '--enable-sigchild');
+    }
+
+    /**
+     * Handles the windows file handles fallbacks
+     *
+     * @param callable $callback A valid PHP callback
+     * @param Boolean $closeEmptyHandles if true, handles that are empty will be assumed closed
+     */
+    private function processFileHandles($callback, $closeEmptyHandles = false)
+    {
+        $fh = $this->fileHandles;
+        foreach ($fh as $type => $fileHandle) {
+            fseek($fileHandle, $this->readBytes[$type]);
+            $data = fread($fileHandle, 8192);
+            if (strlen($data) > 0) {
+                $this->readBytes[$type] += strlen($data);
+                call_user_func($callback, $type == 1 ? self::OUT : self::ERR, $data);
+            }
+            if (false === $data || ($closeEmptyHandles && '' === $data && feof($fileHandle))) {
+                fclose($fileHandle);
+                unset($this->fileHandles[$type]);
+            }
+        }
+    }
+}
+
+
+
+
