@@ -36,7 +36,7 @@ function sonar_permission() {
 }
 
 function sonar_is_live(){
-  if(!empty($_SERVER['PANTHEON_ENVIRONMENT']) && $_SERVER['PANTHEON_ENVIRONMENT'] == 'live') return TRUE;
+  if(isset($_SERVER['PANTHEON_ENVIRONMENT']) && $_SERVER['PANTHEON_ENVIRONMENT'] == 'live') return TRUE;
   return FALSE;
 }
 
@@ -252,7 +252,7 @@ function sonar_parse_remote($data, $file, $options){
       'http_images_path' => $options['http_images_path'],
     );
 
-    if ($_SERVER['PANTHEON_ENVIRONMENT'] != 'live') {
+    if (isset($_SERVER['PANTHEON_ENVIRONMENT']) && $_SERVER['PANTHEON_ENVIRONMENT'] != 'live') {
       if(variable_get('sonar_auth_user')) $data['auth_user'] = variable_get('sonar_auth_user');
       if(variable_get('sonar_auth_pass')) $data['auth_pass'] = variable_get('sonar_auth_pass');
     }
