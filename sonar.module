@@ -144,7 +144,7 @@ function sonar_css_alter(&$css) {
   if(!empty($data)){
     // Compile.
     sonar_parse($data, $file, $files_directory, $theme_key);
-    cache_set($cid, time(), 'cache_page', CACHE_TEMPORARY);
+    cache_set($cid, time(), 'cache_page', CACHE_PERMANENT);
   }
 }
 
