@@ -61,7 +61,7 @@ function sonar_is_live(){
 function sonar_css_alter(&$css) {
 
   // Do we want to use SONAR?
-  if(!variable_get('sonar_sass')) return;
+  if(!variable_get('sonar_sass', TRUE)) return;
 
   global $theme_key;
   $files = sonar_files($css);
@@ -324,7 +324,7 @@ function sonar_parse_remote($data, $file, $options){
         break;
 
       default:
-        watchdog('sonar', 'Server errors - something went wrong on Send-the-Style\'s end.', NULL, WATCHDOG_DEBUG, NULL);
+        watchdog('sonar', "Server errors - something went wrong on Send-the-Style\'s end. Response:\n<pre>" . print_r($response, TRUE) . "</pre>", NULL, WATCHDOG_DEBUG, NULL);
         break;
 
     }
@@ -426,6 +426,7 @@ function sonar_file_add($file) {
  *   A string that represents the processed contents of the stylesheet.
  */
 function sonar_file_add_remote($file) {
+  $includes = &drupal_static(__FUNCTION__);
   $data = file_get_contents($file);
 
   preg_match_all('/(?<!\/\/)(?<!\t)(?<! )@import "(.*)";/', $data, $results);
@@ -433,11 +434,17 @@ function sonar_file_add_remote($file) {
     $info = pathinfo($file);
     foreach($results[1] as $name){
       if(strpos($name, 'compass') !== false) continue;
-      $filepath = $info['dirname'] . '/_' . $name .'.scss';
-      $pattern = '/(?<!\/\/)(?<!\t)(?<! )@import "('. str_replace('/', '\/', $name) .')";/';
+      $filepath = $info['dirname'] . '/' . $name .'.scss';
+      // Add an unscore per SCSS to the filename.
+      $filepath = str_replace('/' . basename($filepath), '/_' . basename($filepath), $filepath);
       $filedata = '// Remove include of '.$name;
-      if(file_exists($filepath)){
-        $filedata = file_get_contents($filepath);
+      $pattern = '/(?<!\/\/)(?<!\t)(?<! )@import "('. str_replace('/', '\/', $name) .')";/';
+      // Files only need to be included once
+      if(!isset($includes[$filepath])){
+        $includes[$filepath] = $filepath;
+        if(file_exists($filepath)){
+          $filedata = sonar_file_add_remote($filepath);
+        }
       }
 
       $data = preg_replace($pattern, $filedata, $data);

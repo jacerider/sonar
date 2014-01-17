@@ -17,7 +17,7 @@ function sonar_settings($form, $form_state) {
     ),
     '#description' => t('Sass integration - uncheck if you are already using a different sass compiler.'),
     '#element_validate' => array('sonar_sass_validate'),
-    '#default_value' => variable_get('sonar_sass'),
+    '#default_value' => variable_get('sonar_sass', TRUE),
   );
   $form['sonar_sass']['sonar_remote'] = array(
     '#type' => 'checkbox',
@@ -157,6 +157,7 @@ function sonar_sass_validate($element, &$form_state) {
  * Execute compass commands
  */
 function sonar_compass_exec($command, &$output, &$errors) {
+  if(sonar_use_remote()) return;
   $compass_path = variable_get('sonar_compass_path', '/usr/bin/compass');
   $errors = sonar_compass_check_path($compass_path);
   if ($errors) {
