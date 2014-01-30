@@ -100,7 +100,7 @@ function sonar_css_alter(&$css) {
     foreach ($files as $key => $file)
     {
       if (!file_exists($css[$key]['data'])) {
-        unset($css[$key]);
+        unset($css[$key], $files[$key]);
         drupal_set_message(t('Sonar is trying to use @file and it is not able to find it.', array('@file'=>$key)));
       }
     }
@@ -143,6 +143,22 @@ function sonar_css_alter(&$css) {
   // Send to compiler
   if(!empty($data)){
     // Compile.
+    $data = implode("\n", $data);
+
+    /* remove comments */
+    $data = preg_replace('!/\*[^*]*\*+([^/][^*]*\*+)*/!', '', $data);
+
+    //  Removes multi-line comments and does not create
+    //  a blank line, also treats white spaces/tabs
+    $data = preg_replace('!^[ \t]*/\*.*?\*/[ \t]*[\r\n]!s', '', $data);
+
+    //  Removes single line '//' comments, treats blank characters
+    // $data = preg_replace('![ \t]*//.*[ \t]*[\r\n]!', '', $data);
+    $data = preg_replace('!(^\/\/.*)!m','',$data);
+
+    //  Strip blank lines
+    $data = preg_replace("/(^[\r\n]*|[\r\n]+)[\s\t]*[\r\n]+/", "\n", $data);
+
     sonar_parse($data, $file, $files_directory, $theme_key);
     cache_set($cid, time(), 'cache_page', CACHE_PERMANENT);
   }
@@ -228,6 +244,8 @@ function sonar_parse_remote($data, $file, $options){
     cache_clear_all('sonar_remote_fail', 'cache');
   }
 
+  // TODO: Remove once node-sass has imagePath support
+  $data = preg_replace('!image-url\([\'|"](.*)[\'|"]\)!', 'url('.$options['http_images_path'].'/$1)', $data);
 
   $directory = $options['directory'] . '/';
   $sass_filepath = $directory . 'tmp.' . basename($file['data']);
@@ -243,7 +261,7 @@ function sonar_parse_remote($data, $file, $options){
 
   try {
     $scheme =  'https';
-    $host = 'send-the-style.herokuapp.com';
+    $host = 'node-the-style.herokuapp.com';
     $user = 'PhxkFh9u7btRL823ZgrV9FdpNPdy7A7RNmM0M2Yz';
     $pass = '';
     $url = $scheme . '://' . $host . '/api/compile';
@@ -303,7 +321,7 @@ function sonar_parse_remote($data, $file, $options){
           // Compiled CSS data was returned.
           if(!empty($json->css)){
             $error = FALSE;
-            $data = $json->css;
+            $data = json_decode($json->css);
             file_unmanaged_delete($sass_filepath);
             drupal_alter('sonar_css', $data, $file);
             file_unmanaged_save_data($data, $css_filepath, FILE_EXISTS_REPLACE);
@@ -434,6 +452,7 @@ function sonar_file_add_remote($file) {
     $info = pathinfo($file);
     foreach($results[1] as $name){
       if(strpos($name, 'compass') !== false) continue;
+      if(strpos($name, 'bourbon') !== false) continue;
       $filepath = $info['dirname'] . '/' . $name .'.scss';
       // Add an unscore per SCSS to the filename.
       $filepath = str_replace('/' . basename($filepath), '/_' . basename($filepath), $filepath);
