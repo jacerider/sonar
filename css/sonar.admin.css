@@ -1,0 +1,14 @@
+#sonar{
+  height:84px;
+  border: 5px dashed #e6e6e6;
+  background-color: #f8f8f8;
+  background-image: url(../images/logo-small.png);
+  background-repeat: no-repeat;
+  background-position: left -1000px;
+  text-align: center;
+  line-height:84px;
+  font-size:1.4em;
+  color:#999999;
+  text-shadow: 0 -1px 0 #fff;
+  margin-bottom:20px;
+}

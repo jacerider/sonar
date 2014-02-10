@@ -3,6 +3,9 @@ description = Automatic SASS compilations.
 core = 7.x
 package = User interface
 
-version = "7.x-1.0"
+version = "7.x-2.0"
 core = "7.x"
+
+; Our plugins interfaces and abstract implementations.
+files[] = plugins/adapter/abstract.inc
 
