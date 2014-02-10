@@ -16,7 +16,7 @@ function sonar_settings($form, $form_state) {
   $form['sonar_status'] = array(
     '#type' => 'checkbox',
     '#title' => t('Use Sonar'),
-    '#description' => t('If enabled, all .scss file on your site will be processed with Sonar.'),
+    '#description' => t('If enabled, all .scss files on your site will be processed with Sonar.'),
     '#default_value' => sonar_is_enabled(),
   );
 
