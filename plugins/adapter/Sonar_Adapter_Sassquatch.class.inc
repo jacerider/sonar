@@ -83,43 +83,33 @@ class Sonar_Adapter_Sassquatch extends Sonar_Adapter_Abstract {
       cache_clear_all('sonar_remote_fail', 'cache');
     }
 
-    $scheme =  'https';
-    $host = 'node-the-style.herokuapp.com';
+    // output_style -> 'nested', 'expanded', 'compact', 'compressed'  -> defaults to compressed
+
+    $scheme =  'http';
+    $host = 'api.sassquat.ch';
     $user = $this->settings['api_key'];
     $pass = '';
-    $url = $scheme . '://' . $host . '/api/compile';
+    $url = $scheme . '://' . $host . '/squeeze';
+
+    $ch = curl_init();
+    curl_setopt($ch, CURLOPT_URL, $url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+    curl_setopt($ch, CURLOPT_POST, true);
+
     $data = array(
-      'file' => url($this->temp, array('absolute'=>TRUE)),
-      'http_images_path' => $this->imagesPath(),
+      'data' => $this->data,
+      'output_style' => $this->settings['output_style'],
+      'image_path' => $this->imagesPath(),
     );
 
-    if(!empty($this->settings['auth']['auth_user'])){
-      $data['auth_user'] = $this->settings['auth']['auth_user'];
-    }
-    if(!empty($this->settings['auth']['auth_pass'])){
-      $data['auth_pass'] = $this->settings['auth']['auth_pass'];
-    }
-
-    $full_url = url($url, array('query' => $data));
-
-    // Get cURL resource
-    $curl = curl_init();
-    // Set some options - we are passing in a useragent too here
-    curl_setopt_array($curl, array(
-        CURLOPT_RETURNTRANSFER => 1,
-        CURLOPT_URL => $full_url,
-        CURLOPT_USERPWD => $user . ":" . $pass,
-        CURLOPT_USERAGENT => 'Sonar'
-    ));
-    // Send the request & save response to $resp
-    $response = curl_exec($curl);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+    $response = curl_exec($ch);
     $json = json_decode($response);
-    $code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
-    // Close request to clear up some resources
-    curl_close($curl);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
 
     if($code == 200 && !empty($json) && !empty($json->css)){
-      return json_decode($json->css);
+      return $json->css;
     }
     else{
       $this->compileError($code, $json, $response);
@@ -176,10 +166,7 @@ class Sonar_Adapter_Sassquatch extends Sonar_Adapter_Abstract {
   public function settingsDefaults(){
     return array(
       'api_key' => '',
-      'auth' => array(
-        'auth_user' => '',
-        'auth_pass' => '',
-      ),
+      'output_style' => 'compressed',
       'images' => array(
         'images_path' => '',
       ),
@@ -207,6 +194,15 @@ class Sonar_Adapter_Sassquatch extends Sonar_Adapter_Abstract {
       '#description' => t('Get your API key by visiting !url.', array('!url' => l('SASSquat.ch', 'http://sassquat.ch'))),
     );
 
+    $form['output_style'] = array(
+      '#title' => t('Output Style'),
+      '#type' => 'select',
+      '#options' => array('nested' => t('Nested'), 'expanded' => t('Expanded'), 'compact' => t('Compact'), 'compressed' => t('Compressed')),
+      '#default_value' => $this->settings['output_style'],
+      '#description' => t('The style of the returned CSS.'),
+      '#required' => TRUE,
+    );
+
     $form['images'] = array(
       '#type' => 'fieldset',
       '#title' => t('Images location'),
@@ -220,27 +216,6 @@ class Sonar_Adapter_Sassquatch extends Sonar_Adapter_Abstract {
         'placeholder' => t('e.g. /path/to/images or http://yourhost.com/path/to/images'),
       ),
       '#default_value' => $this->settings['images']['images_path'],
-    );
-
-    $form['auth'] = array(
-      '#type' => 'fieldset',
-      '#title' => t('Basic access authentication'),
-      '#description' => '<div class="description">'. t('If your server requires HTTP authentication you can use the below fields to enter your credentials.') . '</div>',
-      '#states' => array(
-        'visible' => array(   // action to take.
-          ':input[name="sonar_remote"]' => array('checked' => TRUE),
-        ),
-      ),
-    );
-    $form['auth']['auth_user'] = array(
-      '#type' => 'textfield',
-      '#title' => t('Username'),
-      '#default_value' => $this->settings['auth']['auth_user'],
-    );
-    $form['auth']['auth_pass'] = array(
-      '#type' => 'textfield',
-      '#title' => t('Password'),
-      '#default_value' => $this->settings['auth']['auth_pass'],
     );
 
   }
