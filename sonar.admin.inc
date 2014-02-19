@@ -5,6 +5,7 @@
  */
 function sonar_settings($form, $form_state) {
 
+  ctools_include('plugins');
   drupal_add_css(drupal_get_path('module','sonar') . '/css/sonar.admin.css');
   drupal_add_css(drupal_get_path('module','sonar') . '/css/sonar.admin.scss');
 

@@ -85,6 +85,7 @@ function sonar_is_debug(){
 function sonar_active_adapter(){
   // We do have a setting.
   if($current = variable_get('sonar_adapter')){
+    ctools_include('plugins');
     $plugins = ctools_get_plugins('sonar', 'adapter');
     // Make sure plugin is still available.
     if(isset($plugins[$current])){
