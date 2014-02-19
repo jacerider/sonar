@@ -49,18 +49,15 @@ function sonar_css_alter(&$css) {
  *   The extracted files as an array.
  */
 function sonar_files(&$css) {
-  $files = &drupal_static(__FUNCTION__);
-  if (!isset($files)){
-    $files = array();
-    foreach ($css as $key => $file) {
-      if ($file['type'] == 'file') {
-        $extension = drupal_substr($file['data'], -5);
-        if (in_array($extension, array('.scss', '.sass'))) {
-          $file['syntax'] = $extension == '.scss' ? 'scss' : 'sass';
-          $files[$key] = $file;
-          // Remove from page render.
-          unset($css[$key]);
-        }
+  $files = array();
+  foreach ($css as $key => $file) {
+    if ($file['type'] == 'file') {
+      $extension = drupal_substr($file['data'], -5);
+      if (in_array($extension, array('.scss', '.sass'))) {
+        $file['syntax'] = $extension == '.scss' ? 'scss' : 'sass';
+        $files[$key] = $file;
+        // Remove from page render.
+        unset($css[$key]);
       }
     }
   }
@@ -86,9 +83,9 @@ function sonar_is_debug(){
  * Get the currently active adapter that should be used to compile the SASS.
  */
 function sonar_active_adapter(){
-  $plugins = ctools_get_plugins('sonar', 'adapter');
   // We do have a setting.
   if($current = variable_get('sonar_adapter')){
+    $plugins = ctools_get_plugins('sonar', 'adapter');
     // Make sure plugin is still available.
     if(isset($plugins[$current])){
       return $current;
