@@ -22,6 +22,7 @@ class Sonar_Adapter_Sassquatch extends Sonar_Adapter_Abstract {
   protected function filesPrepareFileContents($filepath){
     // Get the file contents
     $data = file_get_contents($filepath);
+    $this->includedFiles[$filepath] = $filepath;
 
     // Look for internal imports
     preg_match_all('/(?<!\/\/)(?<!\t)(?<! )@import "(.*)";/', $data, $results);
@@ -40,7 +41,6 @@ class Sonar_Adapter_Sassquatch extends Sonar_Adapter_Abstract {
         $pattern = '/(?<!\/\/)(?<!\t)(?<! )@import "('. str_replace('/', '\/', $name) .')";/';
         // Files only need to be included once
         if(!isset($this->includedFiles[$importpath])){
-          $this->includedFiles[$importpath] = $importpath;
           if(file_exists($importpath)){
             $filedata = $this->filesPrepareFileContents($importpath);
           }
@@ -53,7 +53,10 @@ class Sonar_Adapter_Sassquatch extends Sonar_Adapter_Abstract {
     $data = "// SONAR IMPORT $filepath\n" . $data;
 
     // TODO: Remove once node-sass has imagePath support
-    $data = preg_replace('!image-url\([\'|"](.*)[\'|"]\)!', 'url('.$this->imagesPath().'/$1)', $data);
+    $data = preg_replace('!image-url\([\'|"](.*?)[\'|"]\)!', 'url('.$this->imagesPath().'/$1)', $data);
+
+    // TODO: Remove once node-sass has fontPath support
+    $data = preg_replace('!font-url\([\'|"](.*?)[\'|"]\)!', 'url('.$this->fontsPath().'/$1)', $data);
 
     return $data;
   }
@@ -63,7 +66,15 @@ class Sonar_Adapter_Sassquatch extends Sonar_Adapter_Abstract {
    * Get the path to images.
    */
   protected function imagesPath(){
-    return !empty($this->settings['images']['images_path']) ? base_path() . $this->settings['images']['images_path'] : base_path() . drupal_get_path('theme', $this->theme) . '/assets/images';
+    return !empty($this->settings['assets']['images_path']) ? base_path() . $this->settings['assets']['images_path'] : base_path() . drupal_get_path('theme', $this->theme) . '/assets/images';
+  }
+
+
+  /**
+   * Get the path to images.
+   */
+  protected function fontsPath(){
+    return !empty($this->settings['assets']['fonts_path']) ? base_path() . $this->settings['assets']['fonts_path'] : base_path() . drupal_get_path('theme', $this->theme) . '/assets/fonts';
   }
 
 
@@ -167,8 +178,9 @@ class Sonar_Adapter_Sassquatch extends Sonar_Adapter_Abstract {
     return array(
       'api_key' => '',
       'output_style' => 'compressed',
-      'images' => array(
+      'assets' => array(
         'images_path' => '',
+        'fonts_path' => '',
       ),
     );
   }
@@ -203,19 +215,28 @@ class Sonar_Adapter_Sassquatch extends Sonar_Adapter_Abstract {
       '#required' => TRUE,
     );
 
-    $form['images'] = array(
+    $form['assets'] = array(
       '#type' => 'fieldset',
-      '#title' => t('Images location'),
+      '#title' => t('Assets location'),
     );
-    $form['images']['description'] = array(
-      '#markup' => '<div class="description">'. t('Tell us where your images are located on your server. When writing your SASS make sure to use image-url("EXAMPLE.png") when referencing images. Defaults to <code>!files</code>.', array('!files' => '[CURRENT THEME]/assets/images')) . '</div>',
+    $form['assets']['description'] = array(
+      '#markup' => '<div class="description">'. t('Tell us where your assets are located on your server. When writing your SASS make sure to use image-url("EXAMPLE.png") when referencing images and font-url("EXAMPLE.ttf") when referencing fonts. Defaults to <code>!files</code>.', array('!files' => '[CURRENT THEME]/assets/[type]')) . '</div>',
     );
-    $form['images']['images_path'] = array(
+    $form['assets']['images_path'] = array(
+      '#title' => t('Images'),
       '#type' => 'textfield',
       '#attributes' => array(
         'placeholder' => t('e.g. /path/to/images or http://yourhost.com/path/to/images'),
       ),
-      '#default_value' => $this->settings['images']['images_path'],
+      '#default_value' => $this->settings['assets']['images_path'],
+    );
+    $form['assets']['fonts_path'] = array(
+      '#title' => t('Fonts'),
+      '#type' => 'textfield',
+      '#attributes' => array(
+        'placeholder' => t('e.g. /path/to/fonts or http://yourhost.com/path/to/fonts'),
+      ),
+      '#default_value' => $this->settings['assets']['fonts_path'],
     );
 
   }
