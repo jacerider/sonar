@@ -131,7 +131,9 @@ abstract class Sonar_Adapter_Abstract implements Sonar_Adapter {
         $this->compileComplete($css);
       }
       catch (Exception $e){
-        drupal_set_message($e->getMessage(), 'error');
+        if(user_access('administer sonar')){
+          drupal_set_message($e->getMessage(), 'error');
+        }
         return FALSE;
       }
     }
@@ -239,7 +241,9 @@ abstract class Sonar_Adapter_Abstract implements Sonar_Adapter {
     $valid = TRUE;
     foreach ($this->scss as $key => $file){
       if (!file_exists($file['data'])) {
-        drupal_set_message(t('Sonar is trying to use the file @file and it is not able to find it.', array('@file' => '<code>' . $key . '</code>')), 'error');
+        if(user_access('administer sonar')){
+          drupal_set_message(t('Sonar is trying to use the file @file and it is not able to find it.', array('@file' => '<code>' . $key . '</code>')), 'error');
+        }
         $valid = FALSE;
       }
     }
