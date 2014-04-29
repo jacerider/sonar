@@ -185,7 +185,7 @@ abstract class Sonar_Adapter_Abstract implements Sonar_Adapter {
    */
   protected function compilePrepareDirectory(){
     if (!file_prepare_directory($this->directory, FILE_CREATE_DIRECTORY)) {
-      throw new Exception(t('The directory !directory could not be created or is not writable. Please consult your !watchdog for a detailed error description.', array('!directory' => $directory, '!watchdog' => l('log messages', 'admin/reports/dblog'))));
+      throw new Exception(t('The directory !directory could not be created or is not writable. Please consult your !watchdog for a detailed error description.', array('!directory' => $this->directory, '!watchdog' => l('log messages', 'admin/reports/dblog'))));
     };
   }
 
@@ -196,7 +196,7 @@ abstract class Sonar_Adapter_Abstract implements Sonar_Adapter {
   protected function compilePrepareTemp(){
     $this->temp = $this->directory . '/' . 'tmp.' . $this->id . '.' . REQUEST_TIME . '.scss';
     if (!file_unmanaged_save_data($this->data, $this->temp, FILE_EXISTS_REPLACE)) {
-      throw new Exception(t('The file <code>!file</code> could not be created. Please consult your !watchdog for a detailed error description.', array('!file' => $directory, '!watchdog' => l('log messages', 'admin/reports/dblog'))));
+      throw new Exception(t('The file <code>!file</code> could not be created. Please consult your !watchdog for a detailed error description.', array('!file' => $this->directory, '!watchdog' => l('log messages', 'admin/reports/dblog'))));
     };
   }
 
