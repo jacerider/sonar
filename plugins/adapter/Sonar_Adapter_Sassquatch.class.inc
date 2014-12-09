@@ -1,5 +1,7 @@
 <?php
 
+module_load_include('inc', 'sonar', 'plugins/adapter/abstract');
+
 class Sonar_Adapter_Sassquatch extends Sonar_Adapter_Abstract {
 
   /**
