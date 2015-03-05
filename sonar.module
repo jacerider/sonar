@@ -63,6 +63,21 @@ function sonar_files(&$css) {
       }
     }
   }
+  $vars = array();
+  drupal_alter('sonar_var', $vars);
+  if(!empty($vars)){
+    $inline = '';
+    foreach($vars as $key => $value){
+      $inline .= '$' . $key . ': ' . $value . ";\n";
+    }
+    $id = substr(drupal_hash_base64($inline), 0, 30);
+    $files['sonar_bar_' . $id] = array(
+      'type' => 'inline',
+      'data' => $inline,
+      'weight' => -1500,
+    );
+  }
+
   uasort($files, 'drupal_sort_weight');
   return $files;
 }

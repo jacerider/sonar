@@ -159,7 +159,7 @@ abstract class Sonar_Adapter_Abstract implements Sonar_Adapter {
     // If any files have been updated since last compile
     if(!$this->is_live()){
       foreach ($this->scss as $key => $file) {
-        if($cached->data < filemtime($file['data'])){
+        if($file['type'] !== 'inline' && $cached->data < filemtime($file['data'])){
           return TRUE;
         }
       }
@@ -240,7 +240,7 @@ abstract class Sonar_Adapter_Abstract implements Sonar_Adapter {
   protected function filesValidate(){
     $valid = TRUE;
     foreach ($this->scss as $key => $file){
-      if (!file_exists($file['data'])) {
+      if ($file['type'] !== 'inline' && !file_exists($file['data'])) {
         if(user_access('administer sonar')){
           drupal_set_message(t('Sonar is trying to use the file @file and it is not able to find it.', array('@file' => '<code>' . $key . '</code>')), 'error');
         }
@@ -257,7 +257,13 @@ abstract class Sonar_Adapter_Abstract implements Sonar_Adapter {
   protected function filesPrepare(){
     $this->data = array();
     foreach ($this->scss as $key => $file) {
-      $this->data[] = $this->filesPrepareFile($file);
+      if($file['type'] == 'inline'){
+        // unset($this->scss[$key]);
+        $this->data[] = $this->filesPrepareInline($file);
+      }
+      else{
+        $this->data[] = $this->filesPrepareFile($file);
+      }
     }
     $this->filesClean();
   }
@@ -269,6 +275,15 @@ abstract class Sonar_Adapter_Abstract implements Sonar_Adapter {
    */
   protected function filesPrepareFile($file){
     return '@import "' .DRUPAL_ROOT . '/' .$file['data'].'";'."\n";
+  }
+
+
+  /**
+   * Prepare inline SCSS file for aggregation. Each retured value gets added to
+   * a single SCSS file that is then compiled using the selected adapter.
+   */
+  protected function filesPrepareInline($file){
+    return $file['data'];
   }
 
 
