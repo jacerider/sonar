@@ -33,10 +33,14 @@ function sonar_permission() {
  * Implements hook_css_alter().
  */
 function sonar_css_alter(&$css) {
+  static $once;
   if(sonar_is_enabled() && $scss = sonar_files($css)){
-    $handler = sonar_get_handler('adapter', sonar_active_adapter());
-    if($file = $handler->build($scss)){
-      $css[$file['data']] = $file;
+    if (!isset($once)) {
+      $once = 1;
+      $handler = sonar_get_handler('adapter', sonar_active_adapter());
+      if($file = $handler->build($scss)){
+        $css[$file['data']] = $file;
+      }
     }
   }
 }
