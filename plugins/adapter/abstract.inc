@@ -222,7 +222,9 @@ abstract class Sonar_Adapter_Abstract implements Sonar_Adapter {
     }
 
     // Remove temp file
-    file_unmanaged_delete($this->temp);
+    if(file_exists($this->temp)){
+      file_unmanaged_delete($this->temp);
+    }
 
     // Allow modifying of data before saving
     drupal_alter('sonar_css', $css);
