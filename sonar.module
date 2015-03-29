@@ -1,7 +1,5 @@
 <?php
 
-module_load_include('inc', 'sonar', 'plugins/adapter/abstract');
-
 /**
  * Implements hook_menu().
  */
@@ -145,7 +143,7 @@ function sonar_ctools_plugin_api() {
 function sonar_ctools_plugin_type() {
   return array(
     'adapter' => array(
-      'classes' => array('handler'),
+      'classes' => array('class'),
     ),
   );
 }
@@ -171,7 +169,7 @@ function sonar_get_handler($type, $name) {
   $object_cache = drupal_static(__FUNCTION__);
   if (!isset($object_cache[$name])) {
     ctools_include('plugins');
-    $class = ctools_plugin_load_class('sonar', $type, $name, 'handler');
+    $class = ctools_plugin_load_class('sonar', $type, $name, 'class');
     $class = class_exists($class) ? $class : 'Sonar_'.ucfirst($type).'_Broken';
     $all_args = func_get_args();
     $args = array_slice($all_args, 2);

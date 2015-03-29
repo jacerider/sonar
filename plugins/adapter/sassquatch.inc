@@ -1,8 +1,6 @@
 <?php
 
 $plugin = array(
-    'title' => t('SASSquatch'),
-    'handler' => array(
-      'class' => 'Sonar_Adapter_Sassquatch',
-    ),
+  'title' => t('SASSquatch'),
+  'class' => 'Sonar_Adapter_Sassquatch',
 );
