@@ -47,7 +47,6 @@ class Sonar_Adapter_Sassquatch extends Sonar_Adapter_Abstract {
         }
 
         $data = preg_replace($pattern, $filedata, $data);
-            dsm($data);
       }
     }
 
