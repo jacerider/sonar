@@ -25,7 +25,7 @@ class Sonar_Adapter_Sassquatch extends Sonar_Adapter_Abstract {
     $this->includedFiles[$filepath] = $filepath;
 
     // Look for internal imports
-    preg_match_all('/(?<!\/\/)(?<!\t)(?<! )@import "(.*)";/', $data, $results);
+    preg_match_all('/(?<!\/\/)(?<!\t)(?<! )@import ["|\'](.*)["|\'];/', $data, $results);
 
     if(!empty($results[1])){
       $info = pathinfo($filepath);
@@ -38,7 +38,7 @@ class Sonar_Adapter_Sassquatch extends Sonar_Adapter_Abstract {
         // Add an unscore per SCSS to the filename.
         $importpath = str_replace('/' . basename($importpath), '/_' . basename($importpath), $importpath);
         $filedata = '// SONAR IGNORE IMPORT '.$name;
-        $pattern = '/(?<!\/\/)(?<!\t)(?<! )@import "('. str_replace('/', '\/', $name) .')";/';
+        $pattern = '/(?<!\/\/)(?<!\t)(?<! )@import ["|\']('. str_replace('/', '\/', $name) .')["|\'];/';
         // Files only need to be included once
         if(!isset($this->includedFiles[$importpath])){
           if(file_exists($importpath)){
@@ -47,6 +47,7 @@ class Sonar_Adapter_Sassquatch extends Sonar_Adapter_Abstract {
         }
 
         $data = preg_replace($pattern, $filedata, $data);
+            dsm($data);
       }
     }
 
