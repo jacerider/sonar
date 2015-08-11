@@ -69,6 +69,8 @@ abstract class Sonar_Adapter_Abstract implements Sonar_Adapter {
     $this->plugin = $plugin;
     $this->theme = $theme_key;
     $this->scss = array();
+    $this->groups = array();
+    $this->group_id = 0;
     $this->id = '';
     $this->settings = variable_get('sonar_adapter_' . $plugin['name'], array()) + $this->settingsDefaults();
   }
@@ -78,7 +80,7 @@ abstract class Sonar_Adapter_Abstract implements Sonar_Adapter {
    * If site is in live/production mode
    */
   protected function is_live(){
-    return variable_get('sonar_production');
+    return variable_get('sonar_production') || (isset($_SERVER['PANTHEON_ENVIRONMENT']) && $_SERVER['PANTHEON_ENVIRONMENT'] === 'live');
   }
 
 
@@ -99,23 +101,38 @@ abstract class Sonar_Adapter_Abstract implements Sonar_Adapter {
    *   An array of all SCSS items being requested on the page.
    */
   public function build($scss){
+    $files = array();
     $this->scss = $scss;
     $this->directory = sonar_get_destination() . '/' . $this->theme;
     $this->file = '';
 
-    // Generate unique ID
-    $this->generateId();
+    foreach ($this->scss as $key => $file) {
+      $group = empty($file['every_page']);
+      $this->groups[$group][$key] = $file;
+    }
+    ksort($this->groups);
 
-    // Unique file path
-    $this->filepath = $this->directory . '/' . $this->id . '.css';
+    // Allow modifying of files before compiling
+    drupal_alter('sonar_scss', $this->groups);
 
-    // Make the magic happen
-    $this->run();
+    foreach($this->groups as $group_id => $scss){
+      $this->group_id = $group_id;
+      $this->scss = $scss;
 
-    // Add our file to the page
-    $css = drupal_add_css($this->filepath);
-    $file = $css[$this->filepath];
-    return $file;
+      // Generate unique ID
+      $this->generateId();
+
+      // Unique file path
+      $this->filepath = $this->directory . '/' . $this->id . '.css';
+
+      // Make the magic happen
+      if($this->run()){
+        // Add our file to the page
+        $css = drupal_add_css($this->filepath);
+        $files[] = $css[$this->filepath];
+      }
+    }
+    return $files;
   }
 
 
@@ -129,13 +146,17 @@ abstract class Sonar_Adapter_Abstract implements Sonar_Adapter {
         $this->compilePrepare();
         $css = $this->compile();
         $this->compileComplete($css);
+        return TRUE;
       }
       catch (Exception $e){
+        $this->compileCleanup();
         if(user_access('administer sonar')){
           drupal_set_message($e->getMessage(), 'error');
         }
         return FALSE;
       }
+    }else{
+      return TRUE;
     }
   }
 
@@ -183,6 +204,16 @@ abstract class Sonar_Adapter_Abstract implements Sonar_Adapter {
 
 
   /**
+   * Cleanup a failed compile.
+   */
+  protected function compileCleanup(){
+    if(file_exists($this->temp)){
+      file_unmanaged_delete($this->temp);
+    }
+  }
+
+
+  /**
    * Prepare destination directory.
    */
   protected function compilePrepareDirectory(){
@@ -222,9 +253,7 @@ abstract class Sonar_Adapter_Abstract implements Sonar_Adapter {
     }
 
     // Remove temp file
-    if(file_exists($this->temp)){
-      file_unmanaged_delete($this->temp);
-    }
+    $this->compileCleanup();
 
     // Allow modifying of data before saving
     drupal_alter('sonar_css', $css);
@@ -309,6 +338,9 @@ abstract class Sonar_Adapter_Abstract implements Sonar_Adapter {
 
     //  Strip blank lines
     $this->data = preg_replace("/(^[\r\n]*|[\r\n]+)[\s\t]*[\r\n]+/", "\n", $this->data);
+
+    // Allow modifying of data before compiling
+    drupal_alter('sonar_scss_data', $this->data);
 
     // Debug info
     if(sonar_is_debug()){

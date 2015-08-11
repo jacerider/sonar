@@ -20,9 +20,14 @@ class Sonar_Adapter_Sassquatch extends Sonar_Adapter_Abstract {
    * Prepare each SCSS file for aggregation.
    */
   protected function filesPrepareFileContents($filepath){
+    if(isset($this->includedFiles[$this->group_id][$filepath])){
+      // This file has already been included.
+      return '';
+    }
+
     // Get the file contents
     $data = file_get_contents($filepath);
-    $this->includedFiles[$filepath] = $filepath;
+    $this->includedFiles[$this->group_id][$filepath] = $filepath;
 
     // Look for internal imports
     preg_match_all('/(?<!\/\/)(?<!\t)(?<! )@import ["|\'](.*)["|\'];/', $data, $results);
@@ -40,7 +45,7 @@ class Sonar_Adapter_Sassquatch extends Sonar_Adapter_Abstract {
         $filedata = '// SONAR IGNORE IMPORT '.$name;
         $pattern = '/(?<!\/\/)(?<!\t)(?<! )@import ["|\']('. str_replace('/', '\/', $name) .')["|\'];/';
         // Files only need to be included once
-        if(!isset($this->includedFiles[$importpath])){
+        if(!isset($this->includedFiles[$this->group_id][$importpath])){
           if(file_exists($importpath)){
             $filedata = $this->filesPrepareFileContents($importpath);
           }
@@ -124,7 +129,17 @@ class Sonar_Adapter_Sassquatch extends Sonar_Adapter_Abstract {
     }
     else{
       $this->compileError($code, $json, $response);
+      return FALSE;
     }
+  }
+
+
+  /**
+   * Make the data as small as possible but stripping out comments and other junk.
+   */
+  protected function filesClean(){
+    array_unshift($this->data, "\n@import 'bourbon';\n");
+    parent::filesClean();
   }
 
 

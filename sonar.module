@@ -36,8 +36,10 @@ function sonar_css_alter(&$css) {
     if (!isset($once)) {
       $once = 1;
       $handler = sonar_get_handler('adapter', sonar_active_adapter());
-      if($file = $handler->build($scss)){
-        $css[$file['data']] = $file;
+      if($files = $handler->build($scss)){
+        foreach($files as $file){
+          $css[$file['data']] = $file;
+        }
       }
     }
   }
