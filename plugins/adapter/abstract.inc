@@ -112,10 +112,25 @@ abstract class Sonar_Adapter_Abstract implements Sonar_Adapter {
     }
     ksort($this->groups);
 
-    // Allow modifying of files before compiling
+    // Make sure group actually has files and not just inline variables.
+    // If it is just variables, unset the group.
+    foreach($this->groups as $group_id => $scss){
+      $valid = array_filter($scss, function($file) {
+         return ($file['type'] === 'file');
+      });
+
+      if(!$valid){
+        unset($this->groups[$group_id]);
+      }
+    }
+
+    // Allow modifying of files before sorting and compiling
     drupal_alter('sonar_scss', $this->groups);
 
     foreach($this->groups as $group_id => $scss){
+      // Sort
+      uasort($scss, 'drupal_sort_css_js');
+
       $this->group_id = $group_id;
       $this->scss = $scss;
 
@@ -289,7 +304,6 @@ abstract class Sonar_Adapter_Abstract implements Sonar_Adapter {
     $this->data = array();
     foreach ($this->scss as $key => $file) {
       if($file['type'] == 'inline'){
-        // unset($this->scss[$key]);
         $this->data[] = $this->filesPrepareInline($file);
       }
       else{

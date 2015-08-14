@@ -67,23 +67,74 @@ function sonar_files(&$css) {
       }
     }
   }
-  $vars = array();
-  drupal_alter('sonar_var', $vars);
-  if(!empty($vars)){
-    $inline = '';
-    foreach($vars as $key => $value){
-      $inline .= '$' . $key . ': ' . $value . ";\n";
+
+  // Inject custom variables.
+  _sonar_vars($files);
+
+  return $files;
+}
+
+/**
+ * Get any declared custom variables and add them to the files list.
+ */
+function _sonar_vars(&$files){
+  $hook = 'sonar_var';
+  if ($cache = cache_get($hook)) {
+    $vars = $cache->data;
+  }
+  else{
+    // Allow others to add their own variables.
+    $vars = array();
+    foreach (module_implements($hook) as $module) {
+      // Calling all modules implementing hook_hook_name and
+      // Returning results than pushing them into the $result array:
+      $vars += module_invoke($module, $hook);
     }
-    $id = substr(drupal_hash_base64($inline), 0, 30);
-    $files['sonar_bar_' . $id] = array(
-      'type' => 'inline',
-      'data' => $inline,
-      'weight' => -1500,
-    );
+     // Let the themes play too, because pre render is a very themey thing.
+    foreach ($GLOBALS['base_theme_info'] as $base) {
+      $function = $base->name . '_' . $hook;
+      if (function_exists($function)) {
+        $vars += $function();
+      }
+    }
+    $function = $GLOBALS['theme'] . '_' . $hook;
+    if (function_exists($function)) {
+      $vars += $function();
+    }
+    // Allow others to alter the variables.
+    drupal_alter($hook, $vars);
+
+    // Cache results.
+    cache_set($hook, $vars, 'cache');
   }
 
-  uasort($files, 'drupal_sort_weight');
-  return $files;
+  if(!empty($vars)){
+    $count = 0;
+    $options = array(
+      'group' => CSS_DEFAULT,
+      'every_page' => TRUE,
+      'weight' => 0,
+      'base_weight' => -1000,
+    );
+    foreach($vars as $key => $value){
+      if(!is_array($value)){
+        $value = array(
+          'value' => $value,
+        );
+      }
+      $value += $options;
+      $value['weight'] += $value['base_weight'] + ($count * .1);
+      if(is_bool($value['value'])){
+        $value['value'] = $value['value'] ? 'true' : 'false';
+      }
+      $id = substr(drupal_hash_base64($value['group'] . $value['every_page'] . $key . $value['value']), 0, 30);
+      $files['sonar_var_' . $id] = $value += array(
+        'type' => 'inline',
+        'data' => '$' . $key . ': ' . (string) $value['value'] . ";\n",
+      );
+      $count++;
+    }
+  }
 }
 
 /**
