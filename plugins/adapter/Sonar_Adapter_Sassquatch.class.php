@@ -99,8 +99,6 @@ class Sonar_Adapter_Sassquatch extends Sonar_Adapter_Abstract {
       cache_clear_all('sonar_remote_fail', 'cache');
     }
 
-    // output_style -> 'nested', 'expanded', 'compact', 'compressed'  -> defaults to compressed
-
     $scheme =  'http';
     $host = 'api.sassquat.ch';
     $user = $this->settings['api_key'];
