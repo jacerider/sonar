@@ -108,6 +108,10 @@ function _sonar_vars(&$files){
     cache_set($hook, $vars, 'cache');
   }
 
+  if($page_vars = sonar_add_var()){
+    $vars += $page_vars;
+  }
+
   if(!empty($vars)){
     $count = 0;
     $options = array(
@@ -135,6 +139,28 @@ function _sonar_vars(&$files){
       $count++;
     }
   }
+}
+
+/**
+ * Inject a variable into the SCSS file Sonar is about to compile.
+ *
+ * This should only be used for single page injection. For global injection
+ * please use hook_sonar_var and hook_sonar_var_alter.
+ *
+ * @param $name
+ *   The variable name as a string.
+ * @param $var
+ *   An array or string. See hook_sonar_var() in sonar.api.php for more information.
+ */
+function sonar_add_var($name = NULL, $value = NULL){
+  static $cache;
+  if($name && $value){
+    $cache[$name] = array(
+      'value' => $value,
+      'every_page' => FALSE,
+    );
+  }
+  return $cache;
 }
 
 /**
