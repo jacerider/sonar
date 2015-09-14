@@ -147,7 +147,7 @@ class Sonar_Adapter_Sassquatch extends Sonar_Adapter_Abstract {
   protected function compileError($code, $json, $response){
     switch($code){
       case -1:
-        watchdog('sonar', 'Error - Request to Send-the-Style timed out.', NULL, WATCHDOG_DEBUG, NULL);
+        watchdog('sonar', 'Error - Request to SASSquatch timed out.', NULL, WATCHDOG_DEBUG, NULL);
         cache_set('sonar_remote_fail', 1, 'cache', strtotime('+1 minute'));
         break;
       case 200:
@@ -176,7 +176,7 @@ class Sonar_Adapter_Sassquatch extends Sonar_Adapter_Abstract {
         watchdog('sonar', 'Not Found - The requested item doesn\'t exist.', NULL, WATCHDOG_DEBUG, NULL);
         break;
       default:
-        watchdog('sonar', "Server errors - something went wrong on Send-the-Style\'s end. Response:\n<pre>" . print_r($response, TRUE) . "</pre>", NULL, WATCHDOG_DEBUG, NULL);
+        watchdog('sonar', "Server errors - something went wrong on SASSquatch\'s end. Response:\n<pre>" . print_r($response, TRUE) . "</pre>", NULL, WATCHDOG_DEBUG, NULL);
         break;
     }
 
