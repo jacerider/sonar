@@ -210,7 +210,6 @@ function sonar_get_destination(){
  */
 function sonar_ctools_plugin_api() {
   list($module, $api) = func_get_args();
-
   if ($module == 'sonar' && ($api == 'plugins')) {
     return array('version' => 1.0);
   }
@@ -254,6 +253,5 @@ function sonar_get_handler($type, $name) {
     $args = array_slice($all_args, 2);
     $object_cache[$name] = new $class($name, $args);
   }
-
   return $object_cache[$name];
 }
