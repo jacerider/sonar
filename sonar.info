@@ -2,10 +2,10 @@ name = Sonar
 description = Automatic SASS compilations.
 core = 7.x
 package = User interface
-
-version = "7.x-3.0"
+version = "7.x-1.1
 core = "7.x"
+
+dependencies[] = ctools
 
 ; Our plugins interfaces and abstract implementations.
 files[] = plugins/adapter/abstract.inc
-
