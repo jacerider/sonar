@@ -179,7 +179,6 @@ class Sonar_Adapter_Sassquatch extends Sonar_Adapter_Abstract {
         watchdog('sonar', "Server errors - something went wrong on SASSquatch\'s end. Response:\n<pre>" . print_r($response, TRUE) . "</pre>", NULL, WATCHDOG_DEBUG, NULL);
         break;
     }
-
     throw new Exception( t('Could not remote compile the file <code>!file</code>. Please consult your !watchdog for a detailed error description.', array('!file' => basename($this->filepath), '!watchdog' => l('log messages', 'admin/reports/dblog'))) );
   }
 
